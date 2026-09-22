@@ -1,0 +1,13 @@
+schema_version: '1.0'
+num_nodes: 7
+num_edges: 7
+node_feature_names: []
+edge_feature_names: []
+node_feature_dtype: float32
+edge_feature_dtype: float32
+topology: csr
+contract: cdbg_to_cgt
+contract_version: '1.0'
+source:
+  format: cdbg
+  graph_id: synthetic

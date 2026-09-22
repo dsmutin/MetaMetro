@@ -1,0 +1,6 @@
+schema_version: '1.0'
+graph_id: synthetic
+graph_type: de_bruijn
+k: 8
+contract: metagenome_to_graph
+contract_version: '1.0'

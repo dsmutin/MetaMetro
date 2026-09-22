@@ -1,0 +1,19 @@
+schema_version: '1.0'
+graph_id: mock_chain
+graph_type: de_bruijn
+k: 3
+features:
+  node:
+    coverage: float
+    gc: float
+    entropy: float
+    color_set: color_set
+    label: int
+  edge:
+    orientation: orientation
+    coverage: float
+    support: float
+    color_set: color_set
+    label: int
+source:
+  samples: 2

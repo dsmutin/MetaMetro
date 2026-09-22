@@ -1,0 +1,34 @@
+# Canonical graph representation (CFA), schema 1.0.
+# Design notes that show schema_version "0.1" are drafts. This file is the pin.
+schema_version: "1.0"
+contract: graph_to_cfa
+contract_version: "1.0"
+mandatory_files:
+  - metadata.yaml
+  - nodes.fna
+  - nodes.tsv
+  - edges.tsv
+optional_files:
+  - colors.tsv
+  - labels.tsv
+metadata_required:
+  - schema_version
+  - graph_id
+  - graph_type
+metadata_required_when_de_bruijn:
+  - k
+sequence_alphabet: ACGTN
+feature_types:
+  - float
+  - int
+  - str
+  - color_set
+  - orientation
+orientations:
+  - "++"
+  - "+-"
+  - "-+"
+  - "--"
+rejected_authoritative_columns:
+  - length
+  - sequence_length

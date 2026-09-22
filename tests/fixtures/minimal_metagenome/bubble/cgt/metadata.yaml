@@ -1,0 +1,18 @@
+schema_version: '1.0'
+num_nodes: 4
+num_edges: 5
+node_feature_names:
+- coverage
+- gc
+- entropy
+edge_feature_names:
+- coverage
+- support
+node_feature_dtype: float32
+edge_feature_dtype: float32
+topology: csr
+contract: cdbg_to_cgt
+contract_version: '1.0'
+source:
+  format: cdbg
+  graph_id: mock_bubble

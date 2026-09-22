@@ -1,0 +1,22 @@
+# Coloured Graph Tensor (CGT), schema 1.0.
+schema_version: "1.0"
+contract: cdbg_to_cgt
+contract_version: "1.0"
+topology: csr
+dense_ids: "0 .. N-1"
+node_feature_dtype: float32
+edge_feature_dtype: float32
+required_metadata:
+  - schema_version
+  - num_nodes
+  - num_edges
+  - node_feature_names
+  - edge_feature_names
+  - node_feature_dtype
+  - edge_feature_dtype
+  - topology
+  - source
+forbidden:
+  - dense_adjacency
+  - python_objects_per_node
+  - required_dna_sequence

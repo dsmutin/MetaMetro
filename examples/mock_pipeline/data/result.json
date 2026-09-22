@@ -1,0 +1,26 @@
+{
+  "status": "ok",
+  "ok": true,
+  "contract": "ds_on_cgt",
+  "num_predictions": 4,
+  "dense_ids": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "cfa_node_ids": [
+    [
+      "n000001"
+    ],
+    [
+      "n000002"
+    ],
+    [
+      "n000003"
+    ],
+    [
+      "n000004"
+    ]
+  ]
+}

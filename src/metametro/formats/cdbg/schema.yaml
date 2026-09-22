@@ -1,0 +1,20 @@
+# Compacted colored de Bruijn graph (CDBG), schema 1.0.
+schema_version: "1.0"
+contract: cfa_to_cdbg
+contract_version: "1.0"
+mandatory_members:
+  - k
+  - unitigs
+  - links
+  - colors
+  - mapping
+unitig_required:
+  - unitig_id
+  - sequence
+  - color_set
+mapping_direction: cdbg_unitig_id_to_cfa_node_ids
+compaction: >-
+  For graph_type de_bruijn, merge an edge u->v when u has out-degree 1,
+  v has in-degree 1, u is not v, and the edge orientation is ++ or absent.
+  Sequence concatenation keeps a (k-1) overlap and refuses a mismatch.
+  Other graph types use identity unitigs (one CFA node each).

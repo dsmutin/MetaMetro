@@ -1,0 +1,19 @@
+# Optional environment for the Contract 7 PyTorch Geometric backend.
+# The required environment is environment.yml; CI uses that one and stays light.
+# Create this one only to run `pytest -m optional` or `run_ds(..., backend="pyg")`.
+name: metametro-pyg
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12.14
+  # pytorch requires setuptools <82, so this env cannot take the pin from environment.yml.
+  - setuptools<82
+  - pytest=9.1.1
+  - pytest-cov=7.1.0
+  - numpy=2.5.3
+  - pyyaml=6.0.3
+  - pytorch-cpu=2.13.0
+  - pytorch_geometric=2.8.0.post1
+variables:
+  PYTHONPATH: src
