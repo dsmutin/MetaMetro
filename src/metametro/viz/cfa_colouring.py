@@ -238,10 +238,11 @@ def spring_positions(
 ) -> dict[str, tuple[float, float]]:
     """Place every node with deterministic Fruchterman–Reingold.
 
-    The ideal spacing is ``spread * sqrt(1 / n)`` inside the unit square.
-    ``spread`` above 1 pushes nodes apart. ``seed`` fixes the random start.
-    The coordinates are not longitude or latitude. Graphs with more than 500
-    nodes approximate distant repulsion by grid cells.
+    The ideal spacing is ``spread * sqrt(1 / n)``. ``seed`` fixes the random
+    start; that start is recentered and scaled to a unit span. Temperature
+    starts at ``0.1 * spread`` and cools linearly, so the last steps still
+    move. The coordinates are not longitude or latitude. Graphs with more
+    than 500 nodes approximate distant repulsion by grid cells.
     """
     import numpy as np
 
@@ -266,9 +267,17 @@ def spring_positions(
     source = np.asarray(sources, dtype=np.int64)
     target = np.asarray(targets, dtype=np.int64)
     position = np.random.default_rng(seed).random((count, 2))
+    position -= position.mean(axis=0)
+    box = float(np.ptp(position, axis=0).max())
+    if box > 0:
+        position /= box
     ideal = float(spread) * math.sqrt(1.0 / count)
-    temperature = 0.1
+    # Step size scales with spread: the equilibrium drawing is larger when
+    # the ideal edge is longer. Linear cooling keeps late steps moving;
+    # a multiplicative schedule freezes the layout after a few iterations.
+    initial_temperature = 0.1 * float(spread)
     for step in range(iterations):
+        temperature = initial_temperature * (1.0 - step / iterations)
         displacement = _repulsion(position, ideal)
         if source.size:
             delta = position[source] - position[target]
@@ -280,7 +289,6 @@ def spring_positions(
         limited = np.minimum(length, temperature) / length
         position += displacement * limited[:, None]
         position -= position.mean(axis=0)
-        temperature *= 1.0 - (step + 1) / iterations
     return {
         node_id: (float(position[i, 0]), float(position[i, 1]))
         for i, node_id in enumerate(node_ids)
@@ -513,13 +521,9 @@ def _write_figure(
     edge_scale = _scale(frames.edges, edge_label, plt)
     level_count = len(frames.levels)
     if facet_along == "y":
-        figure, axes = plt.subplots(
-            level_count,
-            1,
-            figsize=(8.4, 3.15 * level_count),
-            squeeze=False,
-        )
-        figure.subplots_adjust(left=0.10, right=0.76, bottom=0.04, top=0.97, hspace=0.38)
+        width, height, hspace = _vertical_figsize(level_count)
+        figure, axes = plt.subplots(level_count, 1, figsize=(width, height), squeeze=False)
+        figure.subplots_adjust(left=0.10, right=0.76, bottom=0.04, top=0.97, hspace=hspace)
         panels = [axes[index, 0] for index in range(level_count)]
     else:
         figure, axes = plt.subplots(
@@ -558,11 +562,27 @@ def _write_figure(
     plt.close(figure)
 
 
+def _vertical_figsize(level_count: int) -> tuple[float, float, float]:
+    """Page size whose stacked panels are square.
+
+    A short wide panel would letterbox a square layout down to the panel
+    height, so neighboring nodes would draw on top of each other.
+    """
+    width = 9.0
+    hspace = 0.28
+    axes_width = width * (0.76 - 0.10)
+    axes_height = axes_width
+    pad = hspace * axes_height
+    usable = 0.97 - 0.04
+    height = (level_count * axes_height + max(level_count - 1, 0) * pad) / usable
+    return width, height, hspace
+
+
 def _marker_size(count: int) -> float:
-    """Point area small enough that a spread layout does not paint one blob."""
+    """Point area that stays smaller than a typical nearest-neighbor gap."""
     if count < 2:
         return 18.0
-    return max(2.0, 220.0 / math.sqrt(count))
+    return max(0.4, 90.0 / math.sqrt(count))
 
 
 def _draw_edges(axis, graph, values, positions, scale, span, line_collection) -> None:
@@ -578,10 +598,16 @@ def _draw_edges(axis, graph, values, positions, scale, span, line_collection) ->
         marked.append(segment)
         colours.append(_paint(value, scale))
     width = 0.25 if len(graph.nodes) > 200 else 0.6
+    alpha = _edge_alpha(plain + marked, span)
+    na_alpha = alpha if alpha == 1.0 else alpha * 0.45
     if plain:
-        axis.add_collection(line_collection(plain, colors=NA_COLOUR, linewidths=width, zorder=1))
+        axis.add_collection(
+            line_collection(plain, colors=NA_COLOUR, linewidths=width, alpha=na_alpha, zorder=1)
+        )
     if marked:
-        axis.add_collection(line_collection(marked, colors=colours, linewidths=width + 0.15, zorder=2))
+        axis.add_collection(
+            line_collection(marked, colors=colours, linewidths=width + 0.15, alpha=alpha, zorder=2)
+        )
 
 
 def _draw_nodes(axis, graph, values, positions, scale) -> None:
@@ -620,6 +646,30 @@ def _segment(
         angle = 2.0 * math.pi * step / 8
         loop.append((source[0] + radius * math.cos(angle), source[1] + radius * math.sin(angle)))
     return loop
+
+
+def _edge_alpha(segments: list, span: float) -> float:
+    """Fade edges that cross a large share of the drawing.
+
+    A map's hops are short next to the city, so they stay opaque. A
+    force-directed drawing of the same graph draws long chords; those would
+    paint a solid disk if every chord stayed opaque.
+    """
+    if span <= 0 or len(segments) < 500:
+        return 1.0
+    lengths = []
+    for segment in segments:
+        if len(segment) != 2:
+            continue
+        (x0, y0), (x1, y1) = segment
+        lengths.append(math.hypot(x1 - x0, y1 - y0))
+    if not lengths:
+        return 1.0
+    lengths.sort()
+    median = lengths[len(lengths) // 2] / span
+    if median < 0.05:
+        return 1.0
+    return 0.18
 
 
 def _span(positions: Mapping[str, tuple[float, float]]) -> float:

@@ -37,26 +37,31 @@ def _graph_positions(graph) -> dict[str, tuple[float, float]]:
     }
 
 
-def _choose_spread(graph) -> float:
-    """Pick the Fruchterman–Reingold spread whose nodes are farthest apart.
+def _choose_layout(graph):
+    """Pick the Fruchterman–Reingold spread closest to ideal spacing.
 
-    The score is the median nearest-neighbor distance. The ratio of that
-    distance to ``spread * sqrt(1 / n)`` is printed so a collapsed layout
-    (ratio much below 1) is visible.
+    The score is ``nearest_neighbor_ratio``: median nearest-neighbor distance
+    divided by ``spread * sqrt(1 / n)``. A ratio near 1 is the equilibrium
+    spacing. Axes then fit the drawing, so a larger spread only rescales it.
     """
     count = len(graph.nodes)
+    best_key = (-1.0, -1.0)
     best_spread = 1.0
-    best_distance = -1.0
+    best_positions = None
+    best_ratio = 0.0
     for spread in (1.0, 2.0, 4.0):
-        positions = spring_positions(graph, seed=0, iterations=12, spread=spread)
+        positions = spring_positions(graph, seed=0, iterations=40, spread=spread)
         ratio = nearest_neighbor_ratio(positions, spread=spread)
         distance = ratio * spread * math.sqrt(1.0 / count)
         print(f"spread {spread:g} median_nn {distance:.4f} ratio {ratio:.3f}")
-        if distance > best_distance:
-            best_distance = distance
+        key = (ratio, distance)
+        if key > best_key:
+            best_key = key
             best_spread = spread
+            best_positions = positions
+            best_ratio = ratio
     print(f"using spread {best_spread:g}")
-    return best_spread
+    return best_positions, best_ratio
 
 
 def _colouring(graph, **kwargs):
@@ -88,8 +93,8 @@ def main(argv: list[str] | None = None) -> int:
     """Write the faceted colouring PDF.
 
     Page 1 uses stop longitude and latitude. Page 2 uses the Fruchterman–Reingold
-    spread whose median nearest-neighbor distance is largest. Panels are stacked
-    vertically. Both pages use the same gradient.
+    spread whose median nearest-neighbor distance is closest to the ideal
+    spacing. Panels are stacked vertically. Both pages use the same gradient.
     """
     parser = argparse.ArgumentParser(description="Plot the Saint Petersburg CFA colouring.")
     parser.add_argument("--cfa", type=Path, default=Path("data/work/spb_ground_transit/cfa"))
@@ -104,9 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         positions = _graph_positions(graph)
         latitudes = [point[1] for point in positions.values()]
         aspect = 1.0 / math.cos(math.radians(sum(latitudes) / len(latitudes)))
-        spread = _choose_spread(graph)
-        layout = spring_positions(graph, seed=0, iterations=40, spread=spread)
-        ratio = nearest_neighbor_ratio(layout, spread=spread)
+        layout, ratio = _choose_layout(graph)
         print(f"final median_nn ratio {ratio:.3f}")
         args.out.parent.mkdir(parents=True, exist_ok=True)
         with PdfPages(args.out) as pdf:

@@ -57,7 +57,7 @@ plot_cfa_colouring(
 )
 ```
 
-`facet_along="y"` stacks the panels. Omit `positions` for Fruchterman–Reingold. `layout_seed` fixes the start. The ideal spacing is `layout_spread * sqrt(1 / n)`. `nearest_neighbor_ratio` divides the median nearest-neighbor distance by that spacing. A ratio much below 1 means the drawing is still clumped; raise `layout_spread`. Axis labels are dimensionless layout coordinates.
+`facet_along="y"` stacks the panels. Omit `positions` for Fruchterman–Reingold. `layout_seed` fixes the start. The ideal spacing is `layout_spread * sqrt(1 / n)`. `nearest_neighbor_ratio` divides the median nearest-neighbor distance by that spacing. A ratio near 1 is the equilibrium spacing. A ratio much below 1 means the layout stopped early. The axes fit the drawing, so a larger `layout_spread` rescales it and does not unpack a clump. Axis labels are dimensionless layout coordinates.
 
 To draw a map, pass a longitude and latitude for every node and set the axis labels to `Longitude (°E)` and `Latitude (°N)`. A missing coordinate is an error. Do not drop that node and do not invent a coordinate.
 
@@ -98,4 +98,4 @@ python examples/spb_transit/plot_colouring.py \
   --out data/work/spb_ground_transit/cfa_colouring.pdf
 ```
 
-A node is one named stop: feed ids with the same name at most 60 m apart. The PDF stacks Bus, Tram, and Trolleybus vertically. Both pages use the pink–yellow–light-green gradient. Node colour is simulated passengers: each route draws Normal(mean = its stop count, sd = sqrt of that count) with seed 0, and the node sums the routes that serve it. Edge colour is the mean of the two stops. Page 1 is longitude and latitude. Page 2 is the Fruchterman–Reingold spread with the largest median nearest-neighbor distance. The feed has no measured passenger counts.
+A node is one named stop: feed ids with the same name at most 60 m apart. The PDF stacks Bus, Tram, and Trolleybus vertically. Both pages use the pink–yellow–light-green gradient. Node colour is simulated passengers: each route draws Normal(mean = its stop count, sd = sqrt of that count) with seed 0, and the node sums the routes that serve it. Edge colour is the mean of the two stops. Page 1 is longitude and latitude. Page 2 is the Fruchterman–Reingold spread whose median nearest-neighbor distance is closest to the ideal spacing. The feed has no measured passenger counts.

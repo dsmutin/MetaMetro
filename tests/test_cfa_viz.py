@@ -147,7 +147,7 @@ def test_spring_layout_covers_every_node_and_is_deterministic() -> None:
     assert all(math.isfinite(coord) for point in first.values() for coord in point)
     assert first["sa"] != first["sc"]
     ratio = nearest_neighbor_ratio(first, spread=1.0)
-    assert ratio > 0.0
+    assert ratio > 0.5
 
 
 def test_plot_without_longitude_latitude_writes_pdf(tmp_path) -> None:

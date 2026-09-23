@@ -25,4 +25,4 @@ python examples/spb_transit/plot_colouring.py \
   --out data/work/spb_ground_transit/cfa_colouring.pdf
 ```
 
-The PDF stacks Bus, Tram, and Trolleybus vertically. Page 1 uses the longitude and latitude stored on the nodes. Page 2 uses the Fruchterman–Reingold spread whose median nearest-neighbor distance is largest. Both pages colour nodes by the simulated passenger sum and edges by the mean of the two stops, with the pink–yellow–light-green gradient. A stop or hop outside the panel's mode stays drawn in NA grey.
+The PDF stacks Bus, Tram, and Trolleybus vertically. Page 1 uses the longitude and latitude stored on the nodes. Page 2 uses the Fruchterman–Reingold spread whose median nearest-neighbor distance is closest to the ideal spacing. Both pages colour nodes by the simulated passenger sum and edges by the mean of the two stops, with the pink–yellow–light-green gradient. A stop or hop outside the panel's mode stays drawn in NA grey.
