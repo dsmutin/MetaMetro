@@ -21,6 +21,10 @@ from metametro.formats.cfa.validator import parse_color_set, validate_cfa
 NA_COLOUR = "#CCCCCC"
 UNCLASSIFIED_COLOUR = "#333333"
 OTHER_COLOUR = "#CCCCCC"
+PINK_YELLOW_GREEN = "pink_yellow_green"
+_PINK = "#FF9EC7"
+_YELLOW = "#FFE56A"
+_LIGHT_GREEN = "#B6F2A0"
 _SET1 = (
     "#E41A1C",
     "#377EB8",
@@ -41,17 +45,20 @@ class ColourLabel:
 
     ``namespace`` selects dictionary rows. ``matches`` keeps the values that
     belong to the current facet level. ``reduce`` turns that list into one
-    visual value. ``None`` is NA. ``palette`` is a matplotlib colormap name
-    for numeric values, or ``Set1`` for text values. ``limits`` fixes the
-    numeric scale; otherwise the scale spans the finite values.
+    visual value. ``column`` instead reads that numeric node or edge column
+    once the element carries the facet colour. ``None`` is NA. ``palette`` is
+    a matplotlib colormap name, ``pink_yellow_green``, or ``Set1`` for text.
+    ``limits`` fixes the numeric scale; otherwise the scale spans the finite
+    values.
     """
 
     namespace: str
     legend: str
-    matches: Callable[[str, str], bool]
-    reduce: Callable[[Sequence[str]], float | str | None]
+    matches: Callable[[str, str], bool] | None = None
+    reduce: Callable[[Sequence[str]], float | str | None] | None = None
     palette: str = "YlGnBu"
     limits: tuple[float, float] | None = None
+    column: str | None = None
 
 
 @dataclass(frozen=True)
@@ -125,6 +132,11 @@ def cfa_colour_frames(
     still present in the mapping.
     """
     validate_cfa(graph)
+    for label, layer in ((node_label, "node"), (edge_label, "edge")):
+        if label.column is None and (label.matches is None or label.reduce is None):
+            raise ContractError([f"{layer} colour label needs matches and reduce, or a column"])
+        if label.column is not None and label.column == "":
+            raise ContractError([f"{layer} colour column name is empty"])
     if not graph.colors:
         raise ContractError(["CFA colouring figure needs colors.tsv"])
     by_id, by_value = _colour_index(graph.colors)
@@ -139,6 +151,163 @@ def cfa_colour_frames(
             edges[level][row["edge_id"]] = _visual_value(row, facet_id, level, edge_label, by_id)
     _reject_mixed_kinds(nodes, edges)
     return ColourFrames(levels=levels, nodes=nodes, edges=edges)
+
+
+def pink_yellow_green():
+    """Return the pink, yellow, light-green sequential colormap."""
+    try:
+        from matplotlib.colors import LinearSegmentedColormap
+    except ImportError as exc:
+        raise ContractError(["matplotlib is required to plot a CFA colouring"]) from exc
+    return LinearSegmentedColormap.from_list(
+        PINK_YELLOW_GREEN,
+        [_PINK, _YELLOW, _LIGHT_GREEN],
+    )
+
+
+def _repulsion(position, ideal):
+    """Node–node repulsion. Distant pairs on a large graph share a cell mass."""
+    import numpy as np
+
+    count = position.shape[0]
+    if count <= 500:
+        delta = position[:, None, :] - position[None, :, :]
+        distance = np.linalg.norm(delta, axis=2)
+        np.fill_diagonal(distance, np.inf)
+        distance = np.maximum(distance, 1e-6)
+        unit = delta / distance[:, :, None]
+        return np.sum((ideal * ideal / distance)[:, :, None] * unit, axis=1)
+    bins = 24
+    low = position.min(axis=0)
+    span = np.maximum(position.max(axis=0) - low, 1e-3)
+    cell = np.clip(((position - low) / span * bins).astype(np.int64), 0, bins - 1)
+    code = cell[:, 0] * bins + cell[:, 1]
+    order = np.argsort(code, kind="mergesort")
+    ordered = code[order]
+    cuts = np.flatnonzero(np.diff(ordered)) + 1
+    starts = np.concatenate(([0], cuts))
+    stops = np.concatenate((cuts, [ordered.size]))
+    groups = {
+        int(ordered[start]): order[start:stop]
+        for start, stop in zip(starts, stops)
+    }
+    centres = np.zeros((bins * bins, 2))
+    masses = np.zeros(bins * bins)
+    for key, index in groups.items():
+        centres[key] = position[index].mean(axis=0)
+        masses[key] = index.size
+    cell_x = np.arange(bins * bins) // bins
+    cell_y = np.arange(bins * bins) % bins
+    delta = position[:, None, :] - centres[None, :, :]
+    distance = np.linalg.norm(delta, axis=2)
+    nearby_cell = (np.abs(cell[:, 0, None] - cell_x[None, :]) <= 1) & (
+        np.abs(cell[:, 1, None] - cell_y[None, :]) <= 1
+    )
+    distance = np.where(nearby_cell | (masses[None, :] == 0), np.inf, distance)
+    distance = np.maximum(distance, 1e-6)
+    displacement = np.sum(
+        (masses[None, :, None] * ideal * ideal / distance[:, :, None]) * (delta / distance[:, :, None]),
+        axis=1,
+    )
+    for key, index in groups.items():
+        cx, cy = divmod(key, bins)
+        near = [
+            groups[nx * bins + ny]
+            for dx in (-1, 0, 1)
+            for dy in (-1, 0, 1)
+            if 0 <= (nx := cx + dx) < bins and 0 <= (ny := cy + dy) < bins and (nx * bins + ny) in groups
+        ]
+        nearby = np.concatenate(near)
+        local = position[index, None, :] - position[None, nearby, :]
+        local_distance = np.linalg.norm(local, axis=2)
+        local_distance = np.where(index[:, None] == nearby[None, :], np.inf, local_distance)
+        local_distance = np.maximum(local_distance, 1e-6)
+        displacement[index] += np.sum(
+            (ideal * ideal / local_distance)[:, :, None] * (local / local_distance[:, :, None]),
+            axis=1,
+        )
+    return displacement
+
+
+def spring_positions(
+    graph: CfaGraph,
+    *,
+    seed: int = 0,
+    iterations: int = 30,
+    spread: float = 1.0,
+) -> dict[str, tuple[float, float]]:
+    """Place every node with deterministic Fruchterman–Reingold.
+
+    The ideal spacing is ``spread * sqrt(1 / n)`` inside the unit square.
+    ``spread`` above 1 pushes nodes apart. ``seed`` fixes the random start.
+    The coordinates are not longitude or latitude. Graphs with more than 500
+    nodes approximate distant repulsion by grid cells.
+    """
+    import numpy as np
+
+    if isinstance(seed, bool) or not isinstance(seed, int):
+        raise ContractError(["spring layout seed must be an integer"])
+    if isinstance(iterations, bool) or not isinstance(iterations, int) or iterations < 1:
+        raise ContractError(["spring layout iterations must be a positive integer"])
+    if isinstance(spread, bool) or not isinstance(spread, (int, float)) or not math.isfinite(spread) or spread <= 0:
+        raise ContractError(["spring layout spread must be a finite number > 0"])
+    node_ids = list(graph.node_ids())
+    count = len(node_ids)
+    if count == 0:
+        raise ContractError(["CFA colouring figure needs at least one node"])
+    if count == 1:
+        return {node_ids[0]: (0.0, 0.0)}
+    index = {node_id: i for i, node_id in enumerate(node_ids)}
+    sources: list[int] = []
+    targets: list[int] = []
+    for row in graph.edges:
+        sources.append(index[row["source"]])
+        targets.append(index[row["target"]])
+    source = np.asarray(sources, dtype=np.int64)
+    target = np.asarray(targets, dtype=np.int64)
+    position = np.random.default_rng(seed).random((count, 2))
+    ideal = float(spread) * math.sqrt(1.0 / count)
+    temperature = 0.1
+    for step in range(iterations):
+        displacement = _repulsion(position, ideal)
+        if source.size:
+            delta = position[source] - position[target]
+            distance = np.maximum(np.linalg.norm(delta, axis=1), 1e-6)
+            attraction = (distance / ideal)[:, None] * delta
+            np.add.at(displacement, source, -attraction)
+            np.add.at(displacement, target, attraction)
+        length = np.maximum(np.linalg.norm(displacement, axis=1), 1e-12)
+        limited = np.minimum(length, temperature) / length
+        position += displacement * limited[:, None]
+        position -= position.mean(axis=0)
+        temperature *= 1.0 - (step + 1) / iterations
+    return {
+        node_id: (float(position[i, 0]), float(position[i, 1]))
+        for i, node_id in enumerate(node_ids)
+    }
+
+
+def nearest_neighbor_ratio(positions: Mapping[str, tuple[float, float]], *, spread: float = 1.0) -> float:
+    """Median nearest-neighbor distance divided by the Fruchterman–Reingold spacing.
+
+    The spacing is ``spread * sqrt(1 / n)``. A ratio near 1 means nodes sit
+    about one ideal step apart. A ratio much smaller than 1 means the drawing
+    is still clumped.
+    """
+    import numpy as np
+
+    points = np.asarray(list(positions.values()), dtype=float)
+    count = points.shape[0]
+    if count < 2:
+        raise ContractError(["nearest-neighbor ratio needs at least two nodes"])
+    if not math.isfinite(spread) or spread <= 0:
+        raise ContractError(["spread must be a finite number > 0"])
+    delta = points[:, None, :] - points[None, :, :]
+    distance = np.linalg.norm(delta, axis=2)
+    np.fill_diagonal(distance, np.inf)
+    nearest = distance.min(axis=1)
+    ideal = float(spread) * math.sqrt(1.0 / count)
+    return float(np.median(nearest) / ideal)
 
 
 def circle_positions(node_ids: Sequence[str]) -> dict[str, tuple[float, float]]:
@@ -161,28 +330,44 @@ def plot_cfa_colouring(
     node_label: ColourLabel,
     edge_label: ColourLabel,
     facet: ColourFacet,
-    path: str | Path,
+    path: str | Path | None = None,
     x_label: str,
     y_label: str,
     positions: Mapping[str, tuple[float, float]] | None = None,
     aspect: float = 1.0,
+    layout_seed: int = 0,
+    layout_spread: float = 1.0,
+    facet_along: str = "y",
+    pdf_pages=None,
 ) -> ColourFrames:
     """Write a PDF or SVG of the faceted colouring and return the frames.
 
-    Positions are required for every node when ``positions`` is set. Omitted
-    positions use :func:`circle_positions`. The figure has no title. Facet
-    names are panel labels. Legends sit outside the panels. NA is gray.
+    Omitted ``positions`` use :func:`spring_positions` with ``layout_seed``.
+    Those coordinates are a graph layout, not longitude and latitude. Pass
+    ``positions`` only when every node has a real coordinate. The figure has
+    no title. Facet names are panel labels. Legends sit outside the panels.
+    NA is gray. ``pdf_pages`` is an open matplotlib ``PdfPages``; the figure
+    is appended there instead of being written to ``path``.
     """
     frames = cfa_colour_frames(graph, node_label=node_label, edge_label=edge_label, facet=facet)
-    placed = dict(positions) if positions is not None else circle_positions(graph.node_ids())
+    placed = (
+        dict(positions)
+        if positions is not None
+        else spring_positions(graph, seed=layout_seed, spread=layout_spread)
+    )
     missing = [node_id for node_id in graph.node_ids() if node_id not in placed]
     if missing:
         raise ContractError(
             [f"{len(missing)} nodes have no position; first missing id is {missing[0]}"]
         )
-    output = Path(path)
-    if output.suffix.lower() not in {".pdf", ".svg"}:
-        raise ContractError(["CFA colouring figure must be a .pdf or .svg file"])
+    if pdf_pages is None:
+        if path is None:
+            raise ContractError(["CFA colouring figure needs a path"])
+        output = Path(path)
+        if output.suffix.lower() not in {".pdf", ".svg"}:
+            raise ContractError(["CFA colouring figure must be a .pdf or .svg file"])
+    else:
+        output = None
     plt = _pyplot()
     _write_figure(
         graph,
@@ -196,6 +381,8 @@ def plot_cfa_colouring(
         y_label=y_label,
         aspect=aspect,
         plt=plt,
+        pdf_pages=pdf_pages,
+        facet_along=facet_along,
     )
     return frames
 
@@ -243,14 +430,23 @@ def _visual_value(
     owned = set(parse_color_set(row.get("color_set", "")))
     if facet_id not in owned:
         return None
+    if label.column is not None:
+        if label.column not in row:
+            raise ContractError([f"colour column {label.column!r} is missing"])
+        try:
+            return _coerce(float(row[label.column]))
+        except ValueError as exc:
+            raise ContractError([f"colour column {label.column!r} is not numeric"]) from exc
     matched: set[str] = set()
     for color_id in owned:
         pair = by_id.get(color_id)
         if pair is None:
             continue
         namespace, value = pair
-        if namespace == label.namespace and label.matches(level, value):
+        if namespace == label.namespace and label.matches is not None and label.matches(level, value):
             matched.add(value)
+    if label.reduce is None:
+        raise ContractError(["colour label needs a reduce function"])
     return _coerce(label.reduce(sorted(matched)))
 
 
@@ -300,26 +496,40 @@ def _write_figure(
     node_label: ColourLabel,
     edge_label: ColourLabel,
     facet: ColourFacet,
-    path: Path,
+    path: Path | None,
     x_label: str,
     y_label: str,
     aspect: float,
     plt,
+    pdf_pages=None,
+    facet_along: str = "y",
 ) -> None:
     from matplotlib.collections import LineCollection
     from matplotlib.lines import Line2D
 
+    if facet_along not in {"x", "y"}:
+        raise ContractError(["facet_along must be 'x' or 'y'"])
     node_scale = _scale(frames.nodes, node_label, plt)
     edge_scale = _scale(frames.edges, edge_label, plt)
     level_count = len(frames.levels)
-    figure, axes = plt.subplots(
-        1,
-        level_count,
-        figsize=(3.15 * level_count + 2.2, 3.8),
-        squeeze=False,
-    )
-    figure.subplots_adjust(left=0.07, right=0.76, bottom=0.16, top=0.90, wspace=0.22)
-    panels = list(axes[0])
+    if facet_along == "y":
+        figure, axes = plt.subplots(
+            level_count,
+            1,
+            figsize=(8.4, 3.15 * level_count),
+            squeeze=False,
+        )
+        figure.subplots_adjust(left=0.10, right=0.76, bottom=0.04, top=0.97, hspace=0.38)
+        panels = [axes[index, 0] for index in range(level_count)]
+    else:
+        figure, axes = plt.subplots(
+            1,
+            level_count,
+            figsize=(3.15 * level_count + 2.2, 3.8),
+            squeeze=False,
+        )
+        figure.subplots_adjust(left=0.07, right=0.76, bottom=0.16, top=0.90, wspace=0.22)
+        panels = list(axes[0])
     span = _span(positions)
     for axis, level in zip(panels, frames.levels):
         _draw_edges(axis, graph, frames.edges[level], positions, edge_scale, span, LineCollection)
@@ -340,9 +550,19 @@ def _write_figure(
         fontsize=8,
     )
     figure.add_artist(na_legend)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(path)
+    if pdf_pages is None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        figure.savefig(path)
+    else:
+        pdf_pages.savefig(figure)
     plt.close(figure)
+
+
+def _marker_size(count: int) -> float:
+    """Point area small enough that a spread layout does not paint one blob."""
+    if count < 2:
+        return 18.0
+    return max(2.0, 220.0 / math.sqrt(count))
 
 
 def _draw_edges(axis, graph, values, positions, scale, span, line_collection) -> None:
@@ -357,10 +577,11 @@ def _draw_edges(axis, graph, values, positions, scale, span, line_collection) ->
             continue
         marked.append(segment)
         colours.append(_paint(value, scale))
+    width = 0.25 if len(graph.nodes) > 200 else 0.6
     if plain:
-        axis.add_collection(line_collection(plain, colors=NA_COLOUR, linewidths=0.3, zorder=1))
+        axis.add_collection(line_collection(plain, colors=NA_COLOUR, linewidths=width, zorder=1))
     if marked:
-        axis.add_collection(line_collection(marked, colors=colours, linewidths=0.45, zorder=2))
+        axis.add_collection(line_collection(marked, colors=colours, linewidths=width + 0.15, zorder=2))
 
 
 def _draw_nodes(axis, graph, values, positions, scale) -> None:
@@ -379,10 +600,11 @@ def _draw_nodes(axis, graph, values, positions, scale) -> None:
         marked_x.append(x_coord)
         marked_y.append(y_coord)
         colours.append(_paint(value, scale))
+    size = _marker_size(len(graph.nodes))
     if plain_x:
-        axis.scatter(plain_x, plain_y, s=6, c=NA_COLOUR, linewidths=0, zorder=3)
+        axis.scatter(plain_x, plain_y, s=size, c=NA_COLOUR, linewidths=0, zorder=3)
     if marked_x:
-        axis.scatter(marked_x, marked_y, s=7, c=colours, linewidths=0, zorder=4)
+        axis.scatter(marked_x, marked_y, s=size, c=colours, linewidths=0, zorder=4)
 
 
 def _segment(
@@ -420,7 +642,20 @@ def _scale(frames: Mapping[str, Mapping[str, float | str | None]], label: Colour
         return None
     if isinstance(values[0], str):
         return {"kind": "str", "colours": _discrete_colours(values, label.palette)}
-    return {"kind": "float", "cmap": plt.get_cmap(label.palette), "norm": _norm(values, label.limits, plt)}
+    return {"kind": "float", "cmap": _cmap(label.palette), "norm": _norm(values, label.limits, plt)}
+
+
+def _cmap(name: str):
+    if name == PINK_YELLOW_GREEN:
+        return pink_yellow_green()
+    try:
+        from matplotlib import pyplot as plt
+    except ImportError as exc:
+        raise ContractError(["matplotlib is required to plot a CFA colouring"]) from exc
+    try:
+        return plt.get_cmap(name)
+    except ValueError as exc:
+        raise ContractError([f"unknown colour palette {name!r}"]) from exc
 
 
 def _norm(values: Sequence[float], limits: tuple[float, float] | None, plt):

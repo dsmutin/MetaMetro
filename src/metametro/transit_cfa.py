@@ -10,6 +10,7 @@ Colours are every transport type and every route, applied with ``replace``.
 
 from __future__ import annotations
 
+import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Mapping, Sequence
@@ -38,6 +39,8 @@ def transit_cfa(
     *,
     graph_id: str = "ground_transit",
     k: int = 21,
+    passenger_seed: int = 0,
+    coordinates: Mapping[str, tuple[float, float]] | None = None,
 ) -> CfaGraph:
     """Return a coloured de Bruijn CFA for this stop graph.
 
@@ -51,40 +54,48 @@ def transit_cfa(
     length-``k`` de Bruijn nodes would require between a node's own prefix
     and suffix.
 
-    A GTFS stop belongs to one mode, so a count of modes is 1 everywhere.
-    Node coverage is the mean route count over bus, trolley, and tram
-    (modes with no route contribute 0). Edge coverage is the mean of the
-    two endpoint coverages. That is not a passenger count. The feed used
-    by the example has none.
+    Coverage is a simulated passenger flow, not a count from the feed.
+    Each route draws one intensity from a normal distribution whose mean
+    ``x`` is the number of distinct stops on that route and whose standard
+    deviation is ``sqrt(x)``. A negative draw is set to 0. ``passenger_seed``
+    fixes the draws. The intensity is added to every stop the route serves.
+    Node coverage is the sum of those intensities. Edge coverage is the mean
+    of the two endpoint node coverages.
+
+    ``coordinates`` maps a stop id to ``(longitude, latitude)`` in degrees.
+    When it is set, every stop that becomes a node must have a coordinate.
 
     The colour dictionary has one ``transport_type`` row per mode and one
     ``route`` row per route. A stop or hop carries every colour that applies.
     """
     _require_k(k)
+    _require_seed(passenger_seed)
     route_by_id = _routes_by_id(routes)
     stop_routes, edge_routes = _collect(stops, route_by_id, trips)
     if not stop_routes:
         raise ContractError(["transit CFA needs at least one stop visit"])
+    coordinate_of = _require_coordinates(stop_routes, coordinates)
 
     node_ids = [f"s{stop_id}" for stop_id in sorted(stop_routes)]
     id_of = {stop_id: f"s{stop_id}" for stop_id in stop_routes}
     directed = sorted(
         (id_of[source], id_of[target]) for source, target in edge_routes
     )
-    sequences = _assign_sequences(node_ids, directed, k)
-    coverage_of = {
-        stop_id: _type_coverage(route_ids, route_by_id) for stop_id, route_ids in stop_routes.items()
-    }
+    sequences = repeat_junction_sequences(node_ids, directed, k)
+    coverage_of = _passenger_coverage(stop_routes, passenger_seed)
 
     nodes: list[dict[str, str]] = []
     for stop_id in sorted(stop_routes):
-        nodes.append(
-            {
-                "node_id": id_of[stop_id],
-                "stop_name": _cell(stops[stop_id]),
-                "coverage": _float_cell(coverage_of[stop_id]),
-            }
-        )
+        row = {
+            "node_id": id_of[stop_id],
+            "stop_name": _cell(stops[stop_id]),
+            "coverage": _float_cell(coverage_of[stop_id]),
+        }
+        if coordinate_of is not None:
+            longitude, latitude = coordinate_of[stop_id]
+            row["longitude"] = _float_cell(longitude)
+            row["latitude"] = _float_cell(latitude)
+        nodes.append(row)
     edges: list[dict[str, str]] = []
     edge_key_to_id: dict[tuple[str, str], str] = {}
     for index, (source_id, target_id) in enumerate(directed, start=1):
@@ -106,6 +117,10 @@ def transit_cfa(
     colors, node_colors, edge_colors = _colour_maps(
         route_by_id, stop_routes, edge_routes, id_of, edge_key_to_id
     )
+    node_features = {"stop_name": "str", "coverage": "float"}
+    if coordinate_of is not None:
+        node_features["longitude"] = "float"
+        node_features["latitude"] = "float"
     bare = CfaGraph(
         metadata={
             "schema_version": SCHEMA_VERSION,
@@ -115,16 +130,20 @@ def transit_cfa(
             "contract": "graph_to_cfa",
             "contract_version": "1.0",
             "sequence_rule": "repeat_junction_stream",
-            "coverage_rule": "mean_route_count_over_bus_trolley_tram",
+            "coverage_rule": "simulated_passenger_normal",
+            "passenger_seed": passenger_seed,
+            "passenger_x": "distinct_stops_on_route",
+            "passenger_distribution": "normal mean x, standard deviation sqrt(x), negative draws set to 0",
             "features": {
-                "node": {"stop_name": "str", "coverage": "float"},
+                "node": node_features,
                 "edge": {"orientation": "orientation", "coverage": "float"},
             },
         },
         sequences=sequences,
         nodes=nodes,
         edges=edges,
-        node_header=["node_id", "stop_name", "coverage"],
+        node_header=["node_id", "stop_name", "coverage"]
+        + (["longitude", "latitude"] if coordinate_of is not None else []),
         edge_header=["edge_id", "source", "target", "orientation", "coverage"],
     )
     return colour_cfa(
@@ -158,6 +177,54 @@ def overlap_mismatches(graph: CfaGraph) -> list[str]:
 def _require_k(k: int) -> None:
     if not isinstance(k, int) or isinstance(k, bool) or k < 2:
         raise ContractError(["transit CFA requires integer k >= 2"])
+
+
+def _require_seed(seed: int) -> None:
+    if isinstance(seed, bool) or not isinstance(seed, int):
+        raise ContractError(["passenger_seed must be an integer"])
+
+
+def _require_coordinates(
+    stop_routes: Mapping[str, set[str]],
+    coordinates: Mapping[str, tuple[float, float]] | None,
+) -> dict[str, tuple[float, float]] | None:
+    if coordinates is None:
+        return None
+    missing = [stop_id for stop_id in stop_routes if stop_id not in coordinates]
+    if missing:
+        raise ContractError(
+            [f"{len(missing)} stops have no coordinate; first missing id is {missing[0]}"]
+        )
+    found: dict[str, tuple[float, float]] = {}
+    for stop_id in stop_routes:
+        longitude, latitude = coordinates[stop_id]
+        if not math.isfinite(longitude) or not math.isfinite(latitude):
+            raise ContractError([f"stop {stop_id} has a non-finite coordinate"])
+        found[stop_id] = (float(longitude), float(latitude))
+    return found
+
+
+def _passenger_coverage(
+    stop_routes: Mapping[str, set[str]],
+    seed: int,
+) -> dict[str, float]:
+    """Sum one normal draw per route onto every stop that route serves."""
+    import numpy as np
+
+    stops_of: dict[str, list[str]] = defaultdict(list)
+    for stop_id, route_ids in stop_routes.items():
+        for route_id in route_ids:
+            stops_of[route_id].append(stop_id)
+    rng = np.random.default_rng(seed)
+    intensity: dict[str, float] = {}
+    for route_id in sorted(stops_of):
+        mean = float(len(stops_of[route_id]))
+        draw = float(rng.normal(mean, math.sqrt(mean)))
+        intensity[route_id] = 0.0 if draw < 0 else draw
+    return {
+        stop_id: sum(intensity[route_id] for route_id in route_ids)
+        for stop_id, route_ids in stop_routes.items()
+    }
 
 
 def _routes_by_id(routes: Sequence[TransitRoute]) -> dict[str, TransitRoute]:
@@ -204,16 +271,16 @@ def _collect(
     return stop_routes, edge_routes
 
 
-def _type_coverage(route_ids: set[str], route_by_id: Mapping[str, TransitRoute]) -> float:
-    counts = Counter(route_by_id[route_id].transport_type for route_id in route_ids)
-    return sum(counts.get(kind, 0) for kind in TRANSPORT_TYPES) / len(TRANSPORT_TYPES)
-
-
-def _assign_sequences(
+def repeat_junction_sequences(
     node_ids: Sequence[str],
     edges: Sequence[tuple[str, str]],
     k: int,
 ) -> dict[str, str]:
+    """Fill node sequences so each forward edge overlaps by ``k - 1``.
+
+    Junctions joined by an edge share one block of a base-4 counter tape.
+    Each node sequence is the prefix block plus the suffix block.
+    """
     overlap = k - 1
     parent: dict[str, str] = {}
 

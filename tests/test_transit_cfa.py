@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import math
+
+import numpy as np
 import pytest
 
 from metametro.converters.cfa_to_cdbg import cfa_to_cdbg
 from metametro.errors import ContractError
 from metametro.formats.cfa.validator import validate_cfa
 from metametro.transit_cfa import TransitRoute, overlap_mismatches, transit_cfa
+from metametro.transit_stops import StopPlace, cluster_stops
 
 pytestmark = pytest.mark.mandatory
 
@@ -44,19 +48,49 @@ def test_neighbors_share_repeat_overlap_and_compaction_accepts_it() -> None:
     assert {item.cfa_node_id for item in compacted.mapping} == set(graph.node_ids())
 
 
-def test_edge_coverage_is_mean_of_stop_mode_counts() -> None:
-    """Coverage averages route counts over all three modes, not ridership."""
+def test_coverage_is_simulated_passenger_flow() -> None:
+    """Node coverage sums route draws. Edge coverage averages the endpoints.
+
+    Each route draws Normal(mean=stop count, sd=sqrt(stop count)) with seed 0.
+    Draws are in route-id order. A negative draw would be zero.
+    """
     stops, routes, trips = _sample()
-    graph = transit_cfa(stops, routes, trips, k=5)
+    graph = transit_cfa(stops, routes, trips, k=5, passenger_seed=0)
+    rng = np.random.default_rng(0)
+    bus = max(0.0, float(rng.normal(3.0, math.sqrt(3.0))))
+    tram = max(0.0, float(rng.normal(3.0, math.sqrt(3.0))))
+    trolley = max(0.0, float(rng.normal(2.0, math.sqrt(2.0))))
+    expected = {
+        "sa": bus + tram,
+        "sb": bus + tram + trolley,
+        "sc": bus + trolley,
+        "sd": tram,
+    }
     node_coverage = {row["node_id"]: float(row["coverage"]) for row in graph.nodes}
-    assert node_coverage["sa"] == pytest.approx(2 / 3)
-    assert node_coverage["sb"] == pytest.approx(1)
-    assert node_coverage["sc"] == pytest.approx(2 / 3)
-    assert node_coverage["sd"] == pytest.approx(1 / 3)
+    for node_id, value in expected.items():
+        assert node_coverage[node_id] == pytest.approx(value)
     edge_coverage = {(row["source"], row["target"]): float(row["coverage"]) for row in graph.edges}
-    assert edge_coverage[("sa", "sb")] == pytest.approx(5 / 6)
-    assert edge_coverage[("sb", "sc")] == pytest.approx(5 / 6)
-    assert edge_coverage[("sb", "sd")] == pytest.approx(2 / 3)
+    assert edge_coverage[("sa", "sb")] == pytest.approx((expected["sa"] + expected["sb"]) / 2)
+    assert edge_coverage[("sb", "sc")] == pytest.approx((expected["sb"] + expected["sc"]) / 2)
+    assert edge_coverage[("sb", "sd")] == pytest.approx((expected["sb"] + expected["sd"]) / 2)
+    assert graph.metadata["coverage_rule"] == "simulated_passenger_normal"
+    assert graph.metadata["passenger_seed"] == 0
+
+
+def test_same_name_within_the_cutoff_is_one_stop() -> None:
+    """A node is a named place. Close ids merge. A far copy of the name does not."""
+    places = [
+        StopPlace("1", "Alpha", 60.0, 30.0),
+        StopPlace("2", "Alpha", 60.0002, 30.0),
+        StopPlace("3", "Alpha", 60.02, 30.0),
+        StopPlace("4", "Beta", 60.0001, 30.0),
+    ]
+    clustered = cluster_stops(places, metres=60.0)
+    by_id = {item.stop_id: item for item in clustered}
+    assert set(by_id) == {"1", "3", "4"}
+    assert by_id["1"].members == ("1", "2")
+    assert by_id["3"].members == ("3",)
+    assert by_id["4"].members == ("4",)
 
 
 def test_all_mode_and_route_colours_are_applied() -> None:

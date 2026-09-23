@@ -1,4 +1,4 @@
-# metametro
+# MetaMetro
 
 [![version](https://img.shields.io/badge/dynamic/regex?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdsmutin%2FMetaMetro%2Fmain%2FVERSION&search=%5B0-9%5D%2B%5C.%5B0-9%5D%2B%5C.%5B0-9%5D%2B&label=version&color=blue)](VERSION)
 [![required tests](https://img.shields.io/github/actions/workflow/status/dsmutin/MetaMetro/required-tests.yml?branch=main&label=required%20tests)](https://github.com/dsmutin/MetaMetro/actions/workflows/required-tests.yml)

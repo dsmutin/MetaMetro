@@ -2,8 +2,10 @@
 
 The zip is the public feed at
 https://transport.orgp.spb.ru/Portal/transport/internalapi/gtfs/feed.zip
-Passenger counts are not in that feed. Edge coverage averages the route
-counts of bus, trolley, and tram at the two stops.
+Passenger counts are not in that feed. Coverage is a seeded normal draw
+per route, summed on the stops that route serves. A node is one named stop:
+feed ids with the same name at most 60 m apart are merged. That 60 m cut is
+where the same-name cross-mode nearest-distance histogram stops falling.
 """
 
 from __future__ import annotations
@@ -20,6 +22,9 @@ from metametro.converters.cfa_to_cdbg import cfa_to_cdbg
 from metametro.errors import ContractError
 from metametro.formats.cfa.io import dump_cfa
 from metametro.transit_cfa import TRANSPORT_TYPES, TransitRoute, overlap_mismatches, transit_cfa
+from metametro.transit_stops import StopPlace, cluster_stops
+
+SAME_STOP_METRES = 60.0
 
 _REQUIRED = ("routes.txt", "stops.txt", "trips.txt", "stop_times.txt")
 
@@ -33,7 +38,7 @@ def _rows(archive: zipfile.ZipFile, name: str) -> csv.DictReader:
 
 def load_ground_graph(
     gtfs_zip: Path,
-) -> tuple[dict[str, str], list[TransitRoute], list[tuple[str, list[str]]]]:
+) -> tuple[dict[str, str], dict[str, tuple[float, float]], list[TransitRoute], list[tuple[str, list[str]]]]:
     """Read stops, ground routes, and ordered stop lists from a GTFS zip.
 
     Routes whose ``transport_type`` is not bus, trolley, or tram are skipped.
@@ -46,11 +51,16 @@ def load_ground_graph(
         if missing:
             raise ContractError([f"GTFS zip is missing {name}" for name in missing])
         stops: dict[str, str] = {}
+        coordinates: dict[str, tuple[float, float]] = {}
         for row in _rows(archive, "stops.txt"):
             stop_id = (row.get("stop_id") or "").strip()
             if stop_id == "":
                 raise ContractError(["stops.txt row has an empty stop_id"])
             stops[stop_id] = (row.get("stop_name") or "").strip()
+            try:
+                coordinates[stop_id] = (float(row["stop_lon"]), float(row["stop_lat"]))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ContractError([f"stop {stop_id} has a non-numeric coordinate"]) from exc
         routes: list[TransitRoute] = []
         known_ids: set[str] = set()
         other_ids: set[str] = set()
@@ -113,7 +123,43 @@ def load_ground_graph(
             + ", ".join(f"{kind}={count}" for kind, count in sorted(skipped_modes.items())),
             file=sys.stderr,
         )
-    return stops, routes, trips
+    return stops, coordinates, routes, trips
+
+
+def physical_stops(
+    stops: dict[str, str],
+    coordinates: dict[str, tuple[float, float]],
+    trips: list[tuple[str, list[str]]],
+) -> tuple[dict[str, str], dict[str, tuple[float, float]], list[tuple[str, list[str]]], int]:
+    """Collapse feed ids that are the same named stop within 60 m."""
+    used = [stop_id for _route_id, stop_ids in trips for stop_id in stop_ids]
+    missing = [stop_id for stop_id in used if stop_id not in coordinates]
+    if missing:
+        raise ContractError([f"stop {missing[0]} has no coordinate"])
+    places = [
+        StopPlace(
+            stop_id,
+            stops[stop_id],
+            coordinates[stop_id][1],
+            coordinates[stop_id][0],
+        )
+        for stop_id in sorted(set(used))
+    ]
+    clustered = cluster_stops(places, metres=SAME_STOP_METRES)
+    names = {item.stop_id: item.name for item in clustered}
+    centroids = {item.stop_id: (item.longitude, item.latitude) for item in clustered}
+    member_of = {member: item.stop_id for item in clustered for member in item.members}
+    rewritten: list[tuple[str, list[str]]] = []
+    for route_id, stop_ids in trips:
+        sequence: list[str] = []
+        for stop_id in stop_ids:
+            cluster_id = member_of[stop_id]
+            if sequence and sequence[-1] == cluster_id:
+                continue
+            sequence.append(cluster_id)
+        if sequence:
+            rewritten.append((route_id, sequence))
+    return names, centroids, rewritten, len(places)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -129,13 +175,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--k", type=int, default=21, help="De Bruijn k. Sequences have length 2*(k-1).")
     args = parser.parse_args(argv)
     try:
-        stops, routes, trips = load_ground_graph(args.gtfs)
+        feed_stops, coordinates, routes, trips = load_ground_graph(args.gtfs)
+        stops, centroids, trips, feed_count = physical_stops(feed_stops, coordinates, trips)
         graph = transit_cfa(
             stops,
             routes,
             trips,
             graph_id="spb_ground_transit",
             k=args.k,
+            passenger_seed=0,
+            coordinates=centroids,
         )
     except (ContractError, zipfile.BadZipFile, UnicodeDecodeError) as exc:
         print(exc, file=sys.stderr)
@@ -144,10 +193,15 @@ def main(argv: list[str] | None = None) -> int:
         "feed": "https://transport.orgp.spb.ru/Portal/transport/internalapi/gtfs/feed.zip",
         "modes": list(TRANSPORT_TYPES),
         "note": (
-            "Edge coverage is the mean, over bus, trolley, and tram, of the route counts at the two stops. "
+            "A node is one named stop. Feed ids with the same name at most 60 m apart are one node. "
+            "Coverage is simulated: each route draws Normal(mean=stop count, sd=sqrt(stop count)) "
+            "with seed 0, the draw is added to every stop of that route, and an edge is the mean of its stops. "
             "The GTFS feed has no passenger counts. "
             "Ground trips with no stop_times are omitted and counted on stderr."
         ),
+        "feed_stops": feed_count,
+        "physical_stops": len(stops),
+        "same_stop_metres": SAME_STOP_METRES,
     }
     mismatches = overlap_mismatches(graph)
     if mismatches:

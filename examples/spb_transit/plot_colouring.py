@@ -1,69 +1,98 @@
 """Facet the Saint Petersburg CFA by bus, tram, and trolleybus.
 
-Node colour is the percent of that mode's routes whose number is even.
-Edge colour is how many of that mode's routes use the hop. Stops and hops
-that do not carry the facet mode stay on the map in NA grey.
+Node colour is simulated passengers summed over routes. Edge colour is the
+mean of the two stops. Panels are stacked vertically. Stops and hops that
+do not carry the facet mode stay drawn in NA grey.
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
-import io
 import math
 import sys
-import zipfile
 from pathlib import Path
+
+from matplotlib.backends.backend_pdf import PdfPages
 
 from metametro.errors import ContractError
 from metametro.formats.cfa.io import load_cfa
+
 from metametro.viz.cfa_colouring import (
+    PINK_YELLOW_GREEN,
     ColourFacet,
     ColourLabel,
-    count_colours,
-    even_route_percent,
+    nearest_neighbor_ratio,
     plot_cfa_colouring,
+    spring_positions,
 )
 
 
-def _mode_route(level: str, value: str) -> bool:
-    """Keep route colours that belong to this facet mode."""
-    return value.startswith(f"{level}:")
+def _graph_positions(graph) -> dict[str, tuple[float, float]]:
+    """Read longitude and latitude stored on the CFA nodes."""
+    if "longitude" not in graph.node_header or "latitude" not in graph.node_header:
+        raise ContractError(["CFA nodes need longitude and latitude columns"])
+    return {
+        row["node_id"]: (float(row["longitude"]), float(row["latitude"]))
+        for row in graph.nodes
+    }
 
 
-def load_positions(gtfs_zip: Path, node_ids: list[str]) -> dict[str, tuple[float, float]]:
-    """Read stop longitude and latitude for CFA ids ``s`` + stop id."""
-    if not gtfs_zip.is_file() or gtfs_zip.stat().st_size == 0:
-        raise ContractError([f"GTFS zip is missing or empty: {gtfs_zip}"])
-    wanted = {node_id[1:]: node_id for node_id in node_ids}
-    found: dict[str, tuple[float, float]] = {}
-    with zipfile.ZipFile(gtfs_zip) as archive:
-        if "stops.txt" not in archive.namelist():
-            raise ContractError(["GTFS zip is missing stops.txt"])
-        reader = csv.DictReader(io.TextIOWrapper(archive.open("stops.txt"), encoding="utf-8", newline=""))
-        for row in reader:
-            stop_id = (row.get("stop_id") or "").strip()
-            if stop_id not in wanted:
-                continue
-            lat = (row.get("stop_lat") or "").strip()
-            lon = (row.get("stop_lon") or "").strip()
-            try:
-                found[wanted[stop_id]] = (float(lon), float(lat))
-            except ValueError as exc:
-                raise ContractError([f"stop {stop_id} has a non-numeric coordinate"]) from exc
-    missing = [node_id for node_id in node_ids if node_id not in found]
-    if missing:
-        raise ContractError(
-            [f"{len(missing)} CFA nodes have no GTFS coordinate; first missing id is {missing[0]}"]
-        )
-    return found
+def _choose_spread(graph) -> float:
+    """Pick the Fruchterman–Reingold spread whose nodes are farthest apart.
+
+    The score is the median nearest-neighbor distance. The ratio of that
+    distance to ``spread * sqrt(1 / n)`` is printed so a collapsed layout
+    (ratio much below 1) is visible.
+    """
+    count = len(graph.nodes)
+    best_spread = 1.0
+    best_distance = -1.0
+    for spread in (1.0, 2.0, 4.0):
+        positions = spring_positions(graph, seed=0, iterations=12, spread=spread)
+        ratio = nearest_neighbor_ratio(positions, spread=spread)
+        distance = ratio * spread * math.sqrt(1.0 / count)
+        print(f"spread {spread:g} median_nn {distance:.4f} ratio {ratio:.3f}")
+        if distance > best_distance:
+            best_distance = distance
+            best_spread = spread
+    print(f"using spread {best_spread:g}")
+    return best_spread
+
+
+def _colouring(graph, **kwargs):
+    """Draw one page. Both scales use the pink–yellow–light-green gradient."""
+    plot_cfa_colouring(
+        graph,
+        node_label=ColourLabel(
+            namespace="coverage",
+            legend="Simulated passengers (sum)",
+            column="coverage",
+            palette=PINK_YELLOW_GREEN,
+        ),
+        edge_label=ColourLabel(
+            namespace="coverage",
+            legend="Simulated passengers (mean)",
+            column="coverage",
+            palette=PINK_YELLOW_GREEN,
+        ),
+        facet=ColourFacet(
+            namespace="transport_type",
+            levels=("bus", "tram", "trolley"),
+            level_labels={"bus": "Bus", "tram": "Tram", "trolley": "Trolleybus"},
+        ),
+        **kwargs,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Write the faceted colouring PDF."""
+    """Write the faceted colouring PDF.
+
+    Page 1 uses stop longitude and latitude. Page 2 uses the Fruchterman–Reingold
+    spread whose median nearest-neighbor distance is largest. Panels are stacked
+    vertically. Both pages use the same gradient.
+    """
     parser = argparse.ArgumentParser(description="Plot the Saint Petersburg CFA colouring.")
     parser.add_argument("--cfa", type=Path, default=Path("data/work/spb_ground_transit/cfa"))
-    parser.add_argument("--gtfs", type=Path, required=True)
     parser.add_argument(
         "--out",
         type=Path,
@@ -72,38 +101,35 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         graph = load_cfa(args.cfa)
-        positions = load_positions(args.gtfs, graph.node_ids())
+        positions = _graph_positions(graph)
         latitudes = [point[1] for point in positions.values()]
         aspect = 1.0 / math.cos(math.radians(sum(latitudes) / len(latitudes)))
-        plot_cfa_colouring(
-            graph,
-            node_label=ColourLabel(
-                namespace="route",
-                legend="Even-numbered routes (%)",
-                matches=_mode_route,
-                reduce=even_route_percent,
-                palette="YlGnBu",
-                limits=(0.0, 100.0),
-            ),
-            edge_label=ColourLabel(
-                namespace="route",
-                legend="Routes (count)",
-                matches=_mode_route,
-                reduce=count_colours,
-                palette="YlGnBu",
-            ),
-            facet=ColourFacet(
-                namespace="transport_type",
-                levels=("bus", "tram", "trolley"),
-                level_labels={"bus": "Bus", "tram": "Tram", "trolley": "Trolleybus"},
-            ),
-            positions=positions,
-            path=args.out,
-            x_label="Longitude (°E)",
-            y_label="Latitude (°N)",
-            aspect=aspect,
-        )
-    except (ContractError, zipfile.BadZipFile, UnicodeDecodeError) as exc:
+        spread = _choose_spread(graph)
+        layout = spring_positions(graph, seed=0, iterations=40, spread=spread)
+        ratio = nearest_neighbor_ratio(layout, spread=spread)
+        print(f"final median_nn ratio {ratio:.3f}")
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        with PdfPages(args.out) as pdf:
+            _colouring(
+                graph,
+                positions=positions,
+                path=args.out,
+                x_label="Longitude (°E)",
+                y_label="Latitude (°N)",
+                aspect=aspect,
+                facet_along="y",
+                pdf_pages=pdf,
+            )
+            _colouring(
+                graph,
+                positions=layout,
+                path=args.out,
+                x_label="Layout x",
+                y_label="Layout y",
+                facet_along="y",
+                pdf_pages=pdf,
+            )
+    except ContractError as exc:
         print(exc, file=sys.stderr)
         return 1
     print(f"wrote {args.out}")
