@@ -38,3 +38,6 @@ conda-bld/
 .snakemake/
 .Rproj.user/
 *.log
+
+# agentic development
+todo*
