@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from metametro.errors import ContractError
 from metametro.formats.cdbg.model import SCHEMA_VERSION, Cdbg
-from metametro.formats.cfa.model import ALPHABET
+from metametro.formats.cdbg.sequence import junction_overlaps, split_unitig
+from metametro.formats.cfa.model import ALPHABET, ORIENTATIONS
 
 
 def _color_dictionary(graph: Cdbg) -> set[int] | None:
@@ -45,8 +46,19 @@ def validate_cdbg(graph: Cdbg) -> None:
             errors.append(f"malformed sequence for {unitig.unitig_id}")
         elif graph_type == "de_bruijn" and k_ok and len(unitig.sequence) < graph.k:
             errors.append(f"unitig {unitig.unitig_id} is shorter than k")
-        if unitig.internal_overlaps and len(unitig.internal_overlaps) != max(0, len(unitig.members) - 1):
+        junctions = max(0, len(unitig.members) - 1)
+        if unitig.internal_overlaps and len(unitig.internal_overlaps) != junctions:
             errors.append(f"unitig {unitig.unitig_id} overlaps do not match its CFA members")
+        if len(unitig.internal_edge_ids) != junctions:
+            errors.append(
+                f"unitig {unitig.unitig_id} internal edges do not match its CFA members"
+            )
+        if len(unitig.internal_edge_colors) != len(unitig.internal_edge_ids):
+            errors.append(
+                f"unitig {unitig.unitig_id} edge colours do not match its internal edges"
+            )
+        if graph.metadata.get("compaction") == "identity" and len(unitig.members) != 1:
+            errors.append(f"identity unitig {unitig.unitig_id} has more than one CFA node")
         if not unitig.members:
             errors.append(f"unitig {unitig.unitig_id} has no CFA members")
         for node_id in unitig.members:
@@ -70,13 +82,75 @@ def validate_cdbg(graph: Cdbg) -> None:
         link_ids.add(link.link_id)
         if link.source not in unitig_ids or link.target not in unitig_ids:
             errors.append(f"dangling link {link.link_id}: {link.source} -> {link.target}")
-    mapped = {row.cfa_node_id: row for row in graph.mapping}
-    if set(mapped) != set(member_owner):
+        if link.orientation is not None and link.orientation not in ORIENTATIONS:
+            errors.append(f"link {link.link_id} has orientation {link.orientation!r}")
+    seen_edges = set(link_ids)
+    for unitig in graph.unitigs:
+        for edge_id in unitig.internal_edge_ids:
+            if edge_id == "":
+                errors.append(f"unitig {unitig.unitig_id} has an empty internal edge id")
+                continue
+            if edge_id in seen_edges:
+                errors.append(f"duplicate edge id {edge_id}")
+            seen_edges.add(edge_id)
+    by_node = {}
+    for row in graph.mapping:
+        if row.cfa_node_id in by_node:
+            errors.append(f"duplicate mapping row for {row.cfa_node_id}")
+            continue
+        by_node[row.cfa_node_id] = row
+    if set(by_node) != set(member_owner):
         errors.append("invalid mapping: mapping rows do not match unitig membership")
     for row in graph.mapping:
+        if row.cfa_node_id not in by_node:
+            continue
         if row.unitig_id != member_owner.get(row.cfa_node_id):
             errors.append(f"invalid mapping for {row.cfa_node_id}")
         if row.length <= 0:
             errors.append(f"invalid mapping length for {row.cfa_node_id}")
+    for unitig in graph.unitigs:
+        _check_path(graph, unitig, by_node, errors)
     if errors:
         raise ContractError(errors)
+
+
+def _check_path(graph: Cdbg, unitig, by_node: dict, errors: list[str]) -> None:
+    """Require mapping ordinals to follow ``unitig.members`` and tile the sequence."""
+    rows = []
+    aligned = True
+    for ordinal, node_id in enumerate(unitig.members):
+        row = by_node.get(node_id)
+        if row is None or row.unitig_id != unitig.unitig_id:
+            aligned = False
+            continue
+        if row.ordinal != ordinal:
+            errors.append(
+                f"mapping ordinal for {node_id} is not its position in {unitig.unitig_id}"
+            )
+            aligned = False
+        if row.length <= 0:
+            aligned = False
+        rows.append(row)
+    if not aligned or len(rows) != len(unitig.members):
+        return
+    if graph.metadata.get("compaction") == "identity":
+        if rows[0].length != len(unitig.sequence):
+            errors.append(f"identity unitig {unitig.unitig_id} has an inconsistent mapping")
+        return
+    if str(graph.metadata.get("graph_type", "")) == "de_bruijn" and not (
+        isinstance(graph.k, int) and not isinstance(graph.k, bool) and graph.k > 0
+    ):
+        return
+    k = graph.k if isinstance(graph.k, int) and not isinstance(graph.k, bool) and graph.k > 0 else None
+    try:
+        parts = split_unitig(
+            unitig.sequence,
+            [row.length for row in rows],
+            junction_overlaps(unitig, k),
+        )
+    except ContractError as exc:
+        errors.extend(exc.errors)
+        return
+    for row, part in zip(rows, parts):
+        if len(part) != row.length:
+            errors.append(f"restored length mismatch for {row.cfa_node_id}")

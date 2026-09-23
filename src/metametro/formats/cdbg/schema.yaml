@@ -19,3 +19,5 @@ compaction: >-
   graph_type de_bruijn, the edge overlap column when present, or metadata
   overlap otherwise. A mismatch is refused. graph_type is unchanged.
   A graph with no overlap contract keeps identity unitigs of that same type.
+  A unitig of N CFA members stores N-1 internal edge ids in member order.
+  mapping ordinal i is member i of that unitig.

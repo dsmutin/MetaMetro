@@ -9,6 +9,8 @@ cdbg = cfa_to_cdbg(cfa)
 validate_cdbg(cdbg)
 cgt = cdbg_to_cgt(cdbg, node_features=..., edge_features=..., node_labels=...)
 validate_cgt(cgt)
+lineage = node_lineage(cgt, dense_id)       # source_id, cfa_node_ids
+edge_ids = cgt_edge_cfa_ids(cdbg)           # CSR slot → CFA edge id
 graph = cgt_to_pyg(cgt)          # requires torch_geometric
 result = run_ds(cgt, seed=0)     # does not modify cgt
 ```
@@ -37,7 +39,7 @@ Schema files live next to each format (`formats/*/schema.yaml`) and pin schema 1
 
 ## Tests
 
-Mandatory pytest covers, for each format: a valid object, a missing field, a bad dtype, a duplicate id, a dangling endpoint, and a bad schema version. Conversion tests cover the bubble round trip, the chain compaction counts, colour union, feature alignment, CSR edge order, determinism, and the genome → DS id chain on the synthetic metagenome.
+Mandatory pytest covers, for each format: a valid object, a missing field, a bad dtype, a duplicate id, a dangling endpoint, and a bad schema version. Conversion tests cover the bubble round trip, the chain compaction counts, colour union, feature alignment, CSR edge order, determinism, and the genome → DS id chain on the synthetic metagenome. `tests/test_identity.py` checks dense-id lineage, internal CFA edge ids, permuted CSR edge ids, and the on-disk CDBG fixtures against the compactor.
 
 `pytest -m optional` builds a PyG `Data` object when `torch_geometric` is installed and skips otherwise.
 

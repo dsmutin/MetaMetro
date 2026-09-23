@@ -1,10 +1,11 @@
 schema_version: '1.0'
 graph_id: mock_bubble
 graph_type: de_bruijn
-k: 3
 contract: cfa_to_cdbg
 contract_version: '1.0'
 compaction: de_bruijn_chain
 source:
   format: cfa
   graph_id: mock_bubble
+k: 3
+overlap: 2

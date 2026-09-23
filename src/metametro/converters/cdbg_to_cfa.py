@@ -10,45 +10,9 @@ from __future__ import annotations
 from metametro.errors import ContractError
 from metametro.formats.cdbg.model import Cdbg
 from metametro.formats.cdbg.validator import validate_cdbg
+from metametro.formats.cdbg.sequence import junction_overlaps, split_unitig
 from metametro.formats.cfa.model import SCHEMA_VERSION as CFA_SCHEMA
 from metametro.formats.cfa.model import CfaGraph
-
-
-def _junction_overlaps(unitig, k: int | None) -> list[int]:
-    junctions = len(unitig.members) - 1
-    if junctions <= 0:
-        return []
-    if unitig.internal_overlaps:
-        if len(unitig.internal_overlaps) != junctions:
-            raise ContractError([f"unitig {unitig.unitig_id} overlaps do not match its CFA members"])
-        return list(unitig.internal_overlaps)
-    if isinstance(k, int) and not isinstance(k, bool) and k > 0:
-        return [k - 1] * junctions
-    raise ContractError([f"cannot split unitig {unitig.unitig_id} without stored overlaps or k"])
-
-
-def _split_unitig(sequence: str, lengths: list[int], overlaps: list[int]) -> list[str]:
-    if not lengths:
-        return []
-    if len(overlaps) != len(lengths) - 1:
-        raise ContractError(["cannot split unitig sequence with the stored node lengths"])
-    pieces = [sequence[: lengths[0]]]
-    cursor = lengths[0]
-    for length, overlap in zip(lengths[1:], overlaps):
-        extra = length - overlap
-        if overlap < 0 or extra < 0 or cursor + extra > len(sequence):
-            raise ContractError(["cannot split unitig sequence with the stored node lengths"])
-        if overlap == 0:
-            prefix = ""
-        elif len(pieces[-1]) < overlap:
-            raise ContractError(["cannot split unitig sequence with the stored node lengths"])
-        else:
-            prefix = pieces[-1][-overlap:]
-        pieces.append(prefix + sequence[cursor : cursor + extra])
-        cursor += extra
-    if cursor != len(sequence):
-        raise ContractError(["unitig sequence length does not match mapped node lengths"])
-    return pieces
 
 
 def cdbg_to_cfa(cdbg: Cdbg) -> CfaGraph:
@@ -67,7 +31,7 @@ def cdbg_to_cfa(cdbg: Cdbg) -> CfaGraph:
                 raise ContractError([f"identity unitig {unitig.unitig_id} has an inconsistent mapping"])
             parts = [unitig.sequence]
         else:
-            parts = _split_unitig(unitig.sequence, lengths, _junction_overlaps(unitig, cdbg.k))
+            parts = split_unitig(unitig.sequence, lengths, junction_overlaps(unitig, cdbg.k))
         for row, sequence in zip(rows, parts):
             if len(sequence) != row.length:
                 raise ContractError([f"restored length mismatch for {row.cfa_node_id}"])
@@ -78,8 +42,12 @@ def cdbg_to_cfa(cdbg: Cdbg) -> CfaGraph:
     edges: list[dict[str, str]] = []
     for unitig in cdbg.unitigs:
         rows = sorted(by_unitig[unitig.unitig_id], key=lambda item: item.ordinal)
+        if len(unitig.internal_edge_colors) != len(unitig.internal_edge_ids):
+            raise ContractError(
+                [f"unitig {unitig.unitig_id} edge colours do not match its internal edges"]
+            )
         for index, edge_id in enumerate(unitig.internal_edge_ids):
-            colors = unitig.internal_edge_colors[index] if index < len(unitig.internal_edge_colors) else []
+            colors = unitig.internal_edge_colors[index]
             edge = {
                 "edge_id": edge_id,
                 "source": rows[index].cfa_node_id,

@@ -18,7 +18,10 @@ Identity that must survive:
 
 ```text
 genome → read → CFA node → CDBG unitig → CGT dense id → DS result
+CFA edge → CDBG link or internal edge id → CGT CSR slot (links only)
 ```
+
+`metametro.identity` reads those ids from the objects above. It does not add a fourth graph format. A CDBG link id is the CFA edge id. A CGT CSR slot is that link id after the same sort used for edge features. Edges absorbed into a unitig stay on the unitig and are not CSR edges.
 
 ## Contract 1 — genome → metagenome
 

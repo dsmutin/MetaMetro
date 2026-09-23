@@ -82,15 +82,44 @@ def validate_cgt(graph: Cgt) -> None:
     if graph.edge_labels is not None:
         if graph.edge_labels.shape != (e,) or graph.edge_labels.dtype != np.int64:
             errors.append("edge labels must have shape (E,) and dtype int64")
-    if graph.node_colors.shape[0] != n or graph.node_colors.dtype != np.uint8:
+    if graph.node_colors.ndim != 2 or graph.node_colors.shape[0] != n or graph.node_colors.dtype != np.uint8:
         errors.append("node colours must be a uint8 matrix with one row per node")
-    if graph.edge_colors.shape[0] != e or graph.edge_colors.dtype != np.uint8:
+    if graph.edge_colors.ndim != 2 or graph.edge_colors.shape[0] != e or graph.edge_colors.dtype != np.uint8:
         errors.append("edge colours must align with indices[i]")
+    elif (
+        graph.node_colors.ndim == 2
+        and graph.node_colors.shape[1] != graph.edge_colors.shape[1]
+    ):
+        errors.append("node and edge colour matrices have different widths")
+    if graph.node_colors.ndim == 2 and len(graph.color_ids) != graph.node_colors.shape[1]:
+        errors.append("color_ids do not match the colour matrix width")
     if len(graph.mapping) != n:
         errors.append("invalid mapping: dense_id table length must equal N")
     dense_ids = [row.get("dense_id") for row in graph.mapping]
     if dense_ids != list(range(n)):
         errors.append("invalid mapping: dense ids must be 0 .. N-1 in order")
+    seen_source: set[str] = set()
+    seen_cfa: set[str] = set()
+    for row in graph.mapping:
+        source_id = row.get("source_id")
+        cfa_node_ids = row.get("cfa_node_ids")
+        if not isinstance(source_id, str) or source_id == "":
+            errors.append("invalid mapping: missing source_id")
+        elif source_id in seen_source:
+            errors.append(f"invalid mapping: duplicate source_id {source_id}")
+        else:
+            seen_source.add(source_id)
+        if (
+            not isinstance(cfa_node_ids, list)
+            or not cfa_node_ids
+            or any(not isinstance(node_id, str) or node_id == "" for node_id in cfa_node_ids)
+        ):
+            errors.append(f"invalid mapping: dense id {row.get('dense_id')} has no CFA node ids")
+        else:
+            for node_id in cfa_node_ids:
+                if node_id in seen_cfa:
+                    errors.append(f"invalid mapping: CFA node {node_id} is repeated")
+                seen_cfa.add(node_id)
     for array in (
         graph.indptr,
         graph.indices,

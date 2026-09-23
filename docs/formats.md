@@ -80,7 +80,7 @@ Every unitig has `unitig_id`, `sequence`, and `color_set`. For `graph_type: de_b
 cfa_node_id    unitig_id    ordinal    length    color_set
 ```
 
-`length` here is transfer metadata for splitting a unitig back into CFA nodes. It is not a CFA sequence column. Each CFA node belongs to exactly one unitig.
+`length` here is transfer metadata for splitting a unitig back into CFA nodes. It is not a CFA sequence column. Each CFA node belongs to exactly one unitig. `validate_cdbg` requires mapping ordinal `i` to be member `i` of that unitig, and exactly one internal CFA edge id per junction in that order. A unitig that drops those ids does not load.
 
 A Bifrost `graph.gfa` / `graph.color.bfg` / `graph.bfi` bundle is an allowed backend for a later implementation. This repository's minimal backend is the pure-Python compactor in `converters/cfa_to_cdbg.py`. It does not call Bifrost.
 
@@ -106,7 +106,7 @@ with 7 CFA edges and 4 links. The bubble fixture does not merge, because every j
 
 CGT is the runtime ML object. It has no DNA sequence requirement, no dense `N×N` adjacency, and no per-node Python objects. Topology is CSR (`indptr`, `indices`). Optional CSC is not part of schema 1.0.
 
-Nodes are renumbered `0 .. N-1` in unitig-id order. `mapping.tsv` stores `dense_id`, `source_id` (CDBG unitig id), and `cfa_node_ids`.
+Nodes are renumbered `0 .. N-1` in unitig-id order. `mapping.tsv` stores `dense_id`, `source_id` (CDBG unitig id), and `cfa_node_ids`. `metametro.identity` reads that row, and it reads each CSR edge slot back to the CDBG link id. The link id is the CFA edge id. Internal unitig edges are not CSR edges. A unitig id is not a biological name.
 
 ```text
 X_node  float32  (N, F_v)     F_v = 0 is allowed

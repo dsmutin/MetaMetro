@@ -46,6 +46,32 @@ def _as_matrix(
     return np.stack(rows).astype(np.float32)
 
 
+def csr_link_order(cdbg: Cdbg) -> list[int]:
+    """Return ``cdbg.links`` positions in CSR order.
+
+    The sort key is source dense id, target dense id, then link id. Dense ids
+    follow unitig ids sorted lexicographically. A link whose endpoint is not a
+    unitig raises ``ContractError``.
+    """
+    unitigs = sorted(cdbg.unitigs, key=lambda unitig: unitig.unitig_id)
+    dense = {unitig.unitig_id: index for index, unitig in enumerate(unitigs)}
+    missing = [
+        link.link_id
+        for link in cdbg.links
+        if link.source not in dense or link.target not in dense
+    ]
+    if missing:
+        raise ContractError([f"dangling link {link_id}" for link_id in missing])
+    return sorted(
+        range(len(cdbg.links)),
+        key=lambda index: (
+            dense[cdbg.links[index].source],
+            dense[cdbg.links[index].target],
+            cdbg.links[index].link_id,
+        ),
+    )
+
+
 def _as_labels(
     values: np.ndarray | Mapping[str, int] | None,
     keys: list[str],
@@ -93,14 +119,7 @@ def cdbg_to_cgt(
             if color_id in column:
                 node_colors[row, column[color_id]] = 1
 
-    order = sorted(
-        range(len(cdbg.links)),
-        key=lambda index: (
-            dense[cdbg.links[index].source],
-            dense[cdbg.links[index].target],
-            cdbg.links[index].link_id,
-        ),
-    )
+    order = csr_link_order(cdbg)
     indices = np.asarray([dense[cdbg.links[index].target] for index in order], dtype=np.int64)
     counts = np.zeros(len(unitigs), dtype=np.int64)
     for index in order:
