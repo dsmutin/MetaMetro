@@ -35,19 +35,34 @@ def plot_geometric_states(
     path: str | Path,
     *,
     edge_namespace: str | None = None,
+    layout: str = "geographic",
 ) -> None:
     """Write a three-page PDF: CFA, ToCUMG, then the geometric tensor.
 
-    Node and edge coverage use one YlGnBu scale across the pages. Without
-    coverage, edges use Set1 on ``edge_namespace`` and nodes use degree.
-    Panel names are the only titles. Legends sit outside the axes.
+    ``layout="geographic"`` uses longitude and latitude. ``layout="fr"`` places
+    each page with Fruchterman–Reingold (seed 0, 40 iterations). The tensor
+    page reuses the ToCUMG positions through the unitig mapping. Node and edge
+    coverage use one YlGnBu scale across the pages. Without coverage, edges
+    use Set1 on ``edge_namespace`` and nodes use degree. Panel names are the
+    only titles. Legends sit outside the axes.
     """
+    if layout not in {"geographic", "fr"}:
+        raise ContractError(["state figure layout must be 'geographic' or 'fr'"])
     output = Path(path)
     if output.suffix.lower() != ".pdf":
         raise ContractError(["state figure must be a .pdf file"])
     pages = _pages(cfa, states, edge_namespace)
-    latitudes = [row[1] for page in pages for row in page["positions"]]
-    aspect = 1.0 / math.cos(math.radians(sum(latitudes) / len(latitudes)))
+    if layout == "fr":
+        _apply_fr(cfa, states, pages)
+        aspect = 1.0
+        x_label, y_label = "Layout x", "Layout y"
+    else:
+        latitudes = [float(row[1]) for page in pages for row in page["positions"]]
+        aspect = 1.0 / math.cos(math.radians(sum(latitudes) / len(latitudes)))
+        x_label, y_label = "Longitude (°E)", "Latitude (°N)"
+    for page in pages:
+        page["x_label"] = x_label
+        page["y_label"] = y_label
     plt = _pyplot()
     from matplotlib.backends.backend_pdf import PdfPages
 
@@ -103,6 +118,40 @@ def _pages(cfa: CfaGraph, states: GeometricStates, edge_namespace: str | None) -
         _page("ToCUMG", unitig_positions, link_edges, _degree(len(states.cdbg.unitigs), link_edges), link_values, "discrete", "Degree (count)", edge_namespace, categories),
         _page("CGT", tensor_xy, tensor_edges, _degree(states.cgt.num_nodes, tensor_edges), tensor_edge_values, "discrete", "Degree (count)", edge_namespace, categories),
     ]
+
+
+class _EdgeGraph:
+    """Node ids and endpoint pairs for :func:`spring_positions`."""
+
+    def __init__(self, node_ids: list[str], edges: list[tuple[str, str]]) -> None:
+        self._ids = list(node_ids)
+        self.edges = [{"source": source, "target": target} for source, target in edges]
+
+    def node_ids(self) -> list[str]:
+        return list(self._ids)
+
+
+def _apply_fr(cfa: CfaGraph, states: GeometricStates, pages: list[dict]) -> None:
+    """Replace geographic coordinates with one Fruchterman–Reingold drawing per graph."""
+    from metametro.viz.cfa_colouring import spring_positions
+
+    order = [row["node_id"] for row in cfa.nodes]
+    cfa_layout = spring_positions(cfa, seed=0, iterations=40, spread=1.0)
+    pages[0]["positions"] = _as_array(order, cfa_layout)
+    unitig_ids = [unitig.unitig_id for unitig in states.cdbg.unitigs]
+    unitig_layout = spring_positions(
+        _EdgeGraph(unitig_ids, [(link.source, link.target) for link in states.cdbg.links]),
+        seed=0,
+        iterations=40,
+        spread=1.0,
+    )
+    pages[1]["positions"] = _as_array(unitig_ids, unitig_layout)
+    import numpy as np
+
+    dense = np.zeros((states.cgt.num_nodes, 2), dtype=float)
+    for row in states.cgt.mapping:
+        dense[int(row["dense_id"])] = unitig_layout[row["source_id"]]
+    pages[2]["positions"] = dense
 
 
 def _page(name, positions, edges, node_values, edge_values, kind, node_legend, edge_legend, categories) -> dict:
@@ -299,7 +348,7 @@ def _draw_page(plt, pdf, page: dict, aspect: float) -> None:
             Line2D([0], [0], color=colours[name], linewidth=1.5, label=name) for name in page["categories"]
         ]
         figure.legend(handles=handles, title=page["edge_legend"], loc="center left", bbox_to_anchor=(0.84, 0.5), frameon=False, fontsize=7, title_fontsize=8)
-    _frame(axis, positions, aspect, page["name"])
+    _frame(axis, positions, aspect, page["name"], page["x_label"], page["y_label"])
     pdf.savefig(figure)
     plt.close(figure)
 
@@ -348,7 +397,7 @@ def _colourbar(figure, scale, legend: str, box: list[float], plt) -> None:
     bar.ax.tick_params(labelsize=8)
 
 
-def _frame(axis, positions, aspect: float, name: str) -> None:
+def _frame(axis, positions, aspect: float, name: str, x_label: str, y_label: str) -> None:
     xs = positions[:, 0]
     ys = positions[:, 1]
     span_x = float(xs.max() - xs.min()) if len(xs) else 1.0
@@ -357,8 +406,8 @@ def _frame(axis, positions, aspect: float, name: str) -> None:
     pad_y = span_y * 0.03 if span_y else 0.5
     axis.set_xlim(float(xs.min()) - pad_x, float(xs.max()) + pad_x)
     axis.set_ylim(float(ys.min()) - pad_y, float(ys.max()) + pad_y)
-    axis.set_xlabel("Longitude (°E)", fontsize=9)
-    axis.set_ylabel("Latitude (°N)", fontsize=9)
+    axis.set_xlabel(x_label, fontsize=9)
+    axis.set_ylabel(y_label, fontsize=9)
     axis.set_title(name, fontsize=10, pad=4)
     axis.tick_params(labelsize=8, length=3, width=0.6)
     axis.set_aspect(aspect, adjustable="box")

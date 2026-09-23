@@ -116,3 +116,15 @@ def test_three_state_pdf_has_three_pages(tmp_path) -> None:
     data = output.read_bytes()
     assert data.startswith(b"%PDF")
     assert data.count(b"/Type /Page") - data.count(b"/Type /Pages") == 3
+
+
+def test_fr_layout_writes_the_same_three_pages(tmp_path) -> None:
+    """Fruchterman–Reingold is a second placement of the same three pages."""
+    states = build_geometric_states(_branched(), node_namespace="type", edge_namespaces=("type", "route"))
+    output = tmp_path / "states_fr.pdf"
+    plot_geometric_states(_branched(), states, output, edge_namespace="type", layout="fr")
+    data = output.read_bytes()
+    assert data.startswith(b"%PDF")
+    assert data.count(b"/Type /Page") - data.count(b"/Type /Pages") == 3
+    with pytest.raises(ContractError, match="layout"):
+        plot_geometric_states(_branched(), states, output, edge_namespace="type", layout="radial")
