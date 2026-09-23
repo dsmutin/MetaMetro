@@ -1,6 +1,6 @@
 # metametro
 
-[![version](https://img.shields.io/badge/dynamic/file?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdsmutin%2FMetaMetro%2Fmain%2FVERSION&label=version&color=blue)](VERSION)
+[![version](https://img.shields.io/badge/dynamic/regex?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdsmutin%2FMetaMetro%2Fmain%2FVERSION&search=%5B0-9%5D%2B%5C.%5B0-9%5D%2B%5C.%5B0-9%5D%2B&label=version&color=blue)](VERSION)
 [![required tests](https://img.shields.io/github/actions/workflow/status/dsmutin/MetaMetro/required-tests.yml?branch=main&label=required%20tests)](https://github.com/dsmutin/MetaMetro/actions/workflows/required-tests.yml)
 [![full tests](https://img.shields.io/github/actions/workflow/status/dsmutin/MetaMetro/full-tests.yml?branch=main&label=full%20tests)](https://github.com/dsmutin/MetaMetro/actions/workflows/full-tests.yml)
 [![warning](https://img.shields.io/badge/warning-in%20development-yellow)](https://shields.io/badges/static-badge)
