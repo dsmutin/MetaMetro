@@ -14,3 +14,14 @@ python examples/spb_transit/build_cfa.py --gtfs /path/to/feed.zip --out data/wor
 ```
 
 The script validates the CFA, checks every forward overlap, and compacts it to a CDBG. A mismatch exits non-zero and writes nothing.
+
+## Colouring figure
+
+```bash
+python examples/spb_transit/plot_colouring.py \
+  --cfa data/work/spb_ground_transit/cfa \
+  --gtfs /path/to/feed.zip \
+  --out data/work/spb_ground_transit/cfa_colouring.pdf
+```
+
+Three panels: Bus, Tram, Trolleybus. Node colour is the percent of that mode's routes with an even number. Edge colour is the number of that mode's routes on the hop. A stop or hop that is not in the panel's mode stays on the map in NA grey. Positions are the GTFS coordinates. The feed has no passenger counts, and this figure does not invent them.

@@ -13,6 +13,7 @@ Check a box only after mandatory tests pass.
 - [x] MEGAHIT intermediate graph: `contig2fastg` FASTG → CFA with edge orientation
 - [x] Branch, join, and bubble counts on an oriented CFA
 - [x] Ground-transit CFA: repeat-junction sequences, mode-average edge coverage, route and vehicle-type colours
+- [x] Faceted CFA colouring figure (`cfa-viz`): non-members stay with NA colour
 - [x] Conda environment `metametro` created from `environment.yml` with `conda` (mamba fails here); mandatory tests pass inside it
 - [x] Runtime version pins in `environment.yml`, `conda-forge` plus `nodefaults`, verified by a solve
 - [x] Optional `environment-pyg.yml` (`metametro-pyg`): PyTorch 2.13.0 CPU and PyG 2.8.0.post1 from conda-forge; `pytest -m optional` passes

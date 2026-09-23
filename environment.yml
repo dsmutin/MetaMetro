@@ -9,5 +9,6 @@ dependencies:
   - pytest-cov=7.1.0
   - numpy=2.5.3
   - pyyaml=6.0.3
+  - matplotlib-base=3.10.9
 variables:
   PYTHONPATH: src
