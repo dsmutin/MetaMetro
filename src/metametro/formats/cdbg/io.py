@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from metametro.errors import ContractError
+from metametro.formats.cdbg.annotations import dump_annotations, load_annotations
 from metametro.formats.cdbg.model import SCHEMA_VERSION, Cdbg, Link, NodeMap, Unitig
 from metametro.formats.cdbg.validator import validate_cdbg
 from metametro.formats.cfa.validator import parse_color_set
@@ -26,7 +27,7 @@ def _encode_edge_colors(groups: list[list[int]]) -> str:
 
 
 def dump_cdbg(graph: Cdbg, path: str | Path) -> None:
-    """Write unitigs, links, the color dictionary, and the CFA mapping."""
+    """Write unitigs, links, the color dictionary, the CFA mapping, and any annotation sidecar."""
     validate_cdbg(graph)
     root = Path(path)
     root.mkdir(parents=True, exist_ok=True)
@@ -94,6 +95,7 @@ def dump_cdbg(graph: Cdbg, path: str | Path) -> None:
     if graph.labels is not None:
         header = list(graph.labels[0].keys()) if graph.labels else ["label_id", "namespace", "value"]
         write_tsv(root / "labels.tsv", header, graph.labels)
+    dump_annotations(graph, root)
 
 
 def _read_fasta(path: Path) -> dict[str, str]:
@@ -206,6 +208,7 @@ def load_cdbg(path: str | Path, *, validate: bool = True) -> Cdbg:
         mapping=mapping,
         colors=colors,
         labels=labels,
+        annotations=load_annotations(root),
     )
     if validate:
         validate_cdbg(graph)

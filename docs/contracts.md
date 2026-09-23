@@ -12,7 +12,7 @@ Each stage is a contract. The implementation underneath it is not. Contract vers
 | 6 CDBG → CGT | 1.0 | Tensorization |
 | 7 DS on CGT | 1.0 | Graph analysis |
 
-Colour and other annotations belong to CFA. CDBG owns compacted topology. CGT owns numeric arrays. Downstream analysis sees only the CGT API.
+Colouring is a CFA operation. Other measurements may be copied onto the CDBG annotation sidecar after compaction; that copy is not part of Contract 5 and does not change topology. CDBG owns compacted topology. CGT owns the dense numeric arrays used at runtime. The sidecar is not a fourth graph format and it is not a CGT matrix. Downstream analysis still sees the CGT API.
 
 Identity that must survive:
 
@@ -82,13 +82,15 @@ Output: a ToCUMG (totally coloured universal metagenomic graph), stored as CDBG:
 
 Preserved: nucleotide content (under the overlap rule), connectivity (internal edge or link), colours (per node on the mapping; union on the unitig), provenance through CFA ids. Changed: number of nodes, unitig ids, and the topology encoding.
 
-Breaking: dropping the mapping, sequences, or colours, or changing the compaction rule without a schema bump. Another backend is non-breaking.
+Compaction does not copy CFA feature columns and does not aggregate them. After compaction, `transfer_annotations` may store selected columns on the optional sidecar: a CFA node value stays an `internal_node` row keyed by that CFA id, and a CFA edge value stays an `internal_edge` row or an `edge` row (a CDBG link). `aggregate_annotations` writes a unitig-level row only for an explicit policy (`mean`, `sum`, `min`, `max`, `median`, `weighted_mean`, `union`, `majority`, `keep_per_member`). `weighted_mean` uses member sequence lengths unless the caller passes weights. A missing value raises `ContractError` and is not imputed. Every layer records source, method, version, parameters, parent graph id, and parent schema and contract versions. The sidecar is optional files, so schema 1.0 and this contract stay 1.0.
+
+Breaking: dropping the mapping, sequences, or colours, or changing the compaction rule without a schema bump. Another backend is non-breaking. Optional annotation files are non-breaking.
 
 ## Contract 6 — CDBG → CGT
 
-Input: a CDBG plus optional feature and label arrays. Arrays follow unitig-id order for nodes and `cdbg.links` order for edges; conversion then permutes edges into CSR order. A dict keyed by unitig id or link id is also accepted. `F_v = 0` and `F_e = 0` are valid.
+Input: a CDBG plus optional feature and label arrays. Arrays follow unitig-id order for nodes and `cdbg.links` order for edges; conversion then permutes edges into CSR order. A dict keyed by unitig id or link id is also accepted. `F_v = 0` and `F_e = 0` are valid. `node_annotation` and `edge_annotation` are optional `(namespace, feature)` pairs. Node pairs must already be unitig-level sidecar rows. Edge pairs must already be link-level sidecar rows. Those columns are appended after the explicit feature columns, in dense-id order and in CSR order. An internal-edge layer is not written into `X_edge`. A per-CFA-node layer is not silently aggregated into `X_node`; join it with `node_lineage`. A missing selected target raises `ContractError`.
 
-Output: the CGT in [formats.md](formats.md). Construction is one pass over unitigs, links, and feature rows. It does not look up a graph object per feature assignment.
+Output: the CGT in [formats.md](formats.md). Construction is one pass over unitigs, links, and feature rows. It does not look up a graph object per feature assignment. The CGT is still not a semantic graph format.
 
 Labels are a separate integer layer. They are not concatenated into `X_node`.
 

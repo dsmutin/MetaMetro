@@ -7,7 +7,16 @@ cfa = load_cfa(path)
 validate_cfa(cfa)
 cdbg = cfa_to_cdbg(cfa)
 validate_cdbg(cdbg)
-cgt = cdbg_to_cgt(cdbg, node_features=..., edge_features=..., node_labels=...)
+cgt = cdbg_to_cgt(
+    cdbg,
+    node_features=...,
+    edge_features=...,
+    node_labels=...,
+    node_annotation=[("namespace", "feature")],
+    edge_annotation=[("namespace", "feature")],
+)
+cdbg = transfer_annotations(cdbg, cfa, namespace=..., provenance=...)
+cdbg = aggregate_annotations(cdbg, namespace=..., feature=..., policy="weighted_mean", provenance=...)
 validate_cgt(cgt)
 lineage = node_lineage(cgt, dense_id)       # source_id, cfa_node_ids
 edge_ids = cgt_edge_cfa_ids(cdbg)           # CSR slot → CFA edge id
@@ -32,14 +41,14 @@ Schema files live next to each format (`formats/*/schema.yaml`) and pin schema 1
 ## What this tree deliberately does not do
 
 - CFA does not import Bifrost or PyTorch.
-- CDBG does not store coverage, GC, entropy, or per-node labels. Those stay on the CFA and are passed into `cdbg_to_cgt` as arrays.
+- CDBG topology does not embed coverage, GC, entropy, k-mer composition, or feature matrices. Those values may be stored in the optional columnar annotation sidecar (`formats/cdbg/annotations.py`) or passed into `cdbg_to_cgt` as arrays. The sidecar is not `X_node` / `X_edge`. Compaction does not fill it.
 - CGT construction does not allocate an `N×N` adjacency matrix.
 - The PyG adapter does not become a fourth on-disk format.
 - The NumPy trainer is the tested Contract 7 implementation. PyG is an optional backend, not a second result schema.
 
 ## Tests
 
-Mandatory pytest covers, for each format: a valid object, a missing field, a bad dtype, a duplicate id, a dangling endpoint, and a bad schema version. Conversion tests cover the bubble round trip, the chain compaction counts, colour union, feature alignment, CSR edge order, determinism, and the genome → DS id chain on the synthetic metagenome. `tests/test_identity.py` checks dense-id lineage, internal CFA edge ids, permuted CSR edge ids, and the on-disk CDBG fixtures against the compactor.
+Mandatory pytest covers, for each format: a valid object, a missing field, a bad dtype, a duplicate id, a dangling endpoint, and a bad schema version. Conversion tests cover the bubble round trip, the chain compaction counts, colour union, feature alignment, CSR edge order, determinism, and the genome → DS id chain on the synthetic metagenome. `tests/test_identity.py` checks dense-id lineage, internal CFA edge ids, permuted CSR edge ids, and the on-disk CDBG fixtures against the compactor. `tests/test_cdbg_annotations.py` checks CFA transfer, compaction survival for node, internal-edge, and link annotations, namespaces, scalar and vector values, categories, explicit aggregation, provenance, the sidecar round trip, CGT alignment, missing targets, bad dtypes, and refused overwrites.
 
 `pytest -m optional` builds a PyG `Data` object when `torch_geometric` is installed and skips otherwise.
 

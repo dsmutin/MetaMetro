@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from metametro.errors import ContractError
+from metametro.formats.cdbg.annotations import annotation_errors
 from metametro.formats.cdbg.model import SCHEMA_VERSION, Cdbg
 from metametro.formats.cdbg.sequence import junction_overlaps, split_unitig
 from metametro.formats.cfa.model import ALPHABET, ORIENTATIONS
@@ -110,6 +111,7 @@ def validate_cdbg(graph: Cdbg) -> None:
             errors.append(f"invalid mapping length for {row.cfa_node_id}")
     for unitig in graph.unitigs:
         _check_path(graph, unitig, by_node, errors)
+    errors.extend(annotation_errors(graph))
     if errors:
         raise ContractError(errors)
 

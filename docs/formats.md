@@ -61,7 +61,7 @@ Invariants checked by `validate_cfa`: unique node and edge ids, no dangling edge
 
 ## CDBG
 
-CDBG is the stored form of a ToCUMG (totally coloured universal metagenomic graph). It stores compacted topology, unitig sequences, sample colours, and the CFA mapping. The graph before and after compaction has the same `graph_type`. That type may be `de_bruijn`, `repeat`, `lca`, or any other declared type. A de Bruijn `k` is stored only when the source graph declared it. CDBG is not an annotation database and it does not store dense feature matrices. Unitig ids are not permanent biological ids.
+CDBG is the stored form of a ToCUMG (totally coloured universal metagenomic graph). It stores compacted topology, unitig sequences, sample colours, the CFA mapping, and an optional columnar annotation sidecar. The graph before and after compaction has the same `graph_type`. That type may be `de_bruijn`, `repeat`, `lca`, or any other declared type. A de Bruijn `k` is stored only when the source graph declared it. The sidecar is not a dense feature matrix and it is not the CGT. CFA remains the semantic source of truth. A unitig id is not a biological name.
 
 ```text
 cdbg/
@@ -71,7 +71,12 @@ cdbg/
 ├── links.tsv
 ├── mapping.tsv
 ├── colors.tsv       # optional, copied from CFA
-└── labels.tsv       # optional dictionary only
+├── labels.tsv       # optional dictionary only
+└── annotations/     # optional; omitted when the graph has no layers
+    ├── layers.yaml
+    ├── <namespace>__<feature>__<target_type>.tsv       # categories
+    ├── <namespace>__<feature>__<target_type>.ids.tsv   # numeric target ids
+    └── <namespace>__<feature>__<target_type>.npy       # numeric values
 ```
 
 Every unitig has `unitig_id`, `sequence`, and `color_set`. For `graph_type: de_bruijn` the sequence is at least `k`. `unitigs.tsv` may carry `internal_overlaps`, and `links.tsv` may carry `overlap`; both are the integer overlap used at that junction. `mapping.tsv` is mandatory:
@@ -100,7 +105,35 @@ u000003 → n000006
 
 with 7 CFA edges and 4 links. The bubble fixture does not merge, because every junction has degree other than 1.
 
-`CFA → CDBG → CFA` restores sequences, edge endpoints, edge ids, and colours. Numeric feature columns are not part of CDBG and are not restored; join them from the original CFA through the mapping.
+`CFA → CDBG → CFA` restores sequences, edge endpoints, edge ids, and colours. Compaction does not copy numeric CFA columns and does not aggregate them. `cdbg_to_cfa` does not write the annotation sidecar back into CFA columns.
+
+### Annotation sidecar
+
+The sidecar is optional. A schema-1.0 directory with no `annotations/` directory loads as a CDBG with an empty layer list. Adding the sidecar does not change schema 1.0: unitig ids, links, sequences, colours, and the mapping mean what they meant before.
+
+Each layer is one table, not a Python object per graph node and not an `N × F` matrix on the core graph. A record has:
+
+```text
+target_type = node | edge | internal_node | internal_edge
+target_id
+namespace
+feature
+value
+dtype
+source
+```
+
+`node` annotates a whole unitig. `internal_node` annotates one CFA member of that unitig. `internal_edge` annotates one CFA edge absorbed into the unitig. `edge` annotates one external CDBG link. Those four are not interchangeable, and a unitig id is not a stand-in for the CFA node id.
+
+`layers.yaml` records, for every layer, `source`, `method`, `version`, `parameters`, the parent CDBG `graph_id`, and the parent schema and contract versions. A missing field is an error. Numeric values live in a NumPy array aligned to an id table. Categories live in a TSV. Scalar and vector values share this layout; a vector is a 2-d array `(n, width)`, still one array for the layer.
+
+`transfer_annotations` copies selected CFA columns after compaction. Node columns stay keyed by the CFA node id (`internal_node`). An edge column is `internal_edge` when that edge was absorbed, and `edge` when it is still a link. The copy does not average, sum, or otherwise mix member values.
+
+`aggregate_annotations` writes one unitig-level (`node`) value only when the caller names a policy: `mean`, `sum`, `min`, `max`, `median`, `weighted_mean`, `union`, `majority`, or `keep_per_member`. `weighted_mean` uses member sequence lengths from the mapping unless the caller passes weights. `median` of an even count is the mean of the two central values. `union` writes a category whose tokens are sorted and joined with `|`. `majority` raises `ContractError` on a tie. A missing member value raises `ContractError`. It is not filled in. `keep_per_member` records the policy and leaves one row per member. The source layer stays in place when a policy writes a new unitig layer.
+
+The same feature may exist in more than one namespace. Writing the same namespace, feature, and target type twice raises `ContractError` unless the caller passes `replace=True`.
+
+This sidecar is not a CGT feature matrix. A CGT matrix has one float32 row for every dense id and one float32 row for every CSR edge, with no gaps. The sidecar may omit targets, may keep one row per original CFA node, and may store categories. Internal unitig edges are sidecar rows and are not CSR edges, so they are not copied into `X_edge`. `cdbg_to_cgt(..., node_annotation=[(namespace, feature)], edge_annotation=[...])` appends only unitig-level and link-level numeric layers, in dense-id order and CSR order. Per-CFA-node rows stay on the CDBG and are joined through `node_lineage` after tensorization. The existing `node_features`, `edge_features`, and label arguments still build those arrays on their own.
 
 ## Coloured Graph Tensor
 

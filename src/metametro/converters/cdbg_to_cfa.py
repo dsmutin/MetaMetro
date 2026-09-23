@@ -1,8 +1,9 @@
 """Expand a CDBG back to CFA using the stored mapping.
 
 The restored CFA keeps node and edge identifiers, sequences, connectivity,
-and colours. Numeric feature columns are not part of the CDBG contract and
-are not reconstructed; join them from the original CFA through the mapping.
+and colours. The CDBG annotation sidecar is not copied back into CFA
+columns. Join those values from the sidecar, or from the original CFA,
+through the mapping.
 """
 
 from __future__ import annotations

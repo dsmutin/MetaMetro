@@ -13,6 +13,7 @@ from typing import Mapping, Sequence
 import numpy as np
 
 from metametro.errors import ContractError
+from metametro.formats.cdbg.annotations import annotation_feature_block
 from metametro.formats.cdbg.model import Cdbg
 from metametro.formats.cdbg.validator import validate_cdbg
 from metametro.formats.cgt.model import SCHEMA_VERSION, Cgt
@@ -93,17 +94,38 @@ def cdbg_to_cgt(
     edge_labels: np.ndarray | Mapping[str, int] | None = None,
     node_feature_names: Sequence[str] | None = None,
     edge_feature_names: Sequence[str] | None = None,
+    node_annotation: Sequence[tuple[str, str]] | None = None,
+    edge_annotation: Sequence[tuple[str, str]] | None = None,
 ) -> Cgt:
-    """Materialize a CSR tensor from a CDBG in one pass over nodes, edges, and features."""
+    """Materialize a CSR tensor from a CDBG in one pass over nodes, edges, and features.
+
+    ``node_features`` and ``edge_features`` keep their previous meaning.
+    ``node_annotation`` and ``edge_annotation`` are ``(namespace, feature)``
+    pairs drawn from the CDBG sidecar. Node pairs must already be unitig-level
+    (``target_type="node"``). Edge pairs must already be link-level
+    (``target_type="edge"``). Internal unitig edges are not CSR edges and are
+    not written into ``X_edge``. Per-CFA-node rows stay on the sidecar; join
+    them with ``node_lineage`` after this conversion. Selected annotation
+    columns are appended after the explicit feature columns. When feature
+    names are omitted, explicit columns are named ``f0``, ``f1``, ... and
+    annotation columns are named ``namespace:feature`` (or
+    ``namespace:feature:i`` for a vector).
+    """
     validate_cdbg(cdbg)
     unitigs = sorted(cdbg.unitigs, key=lambda unitig: unitig.unitig_id)
     source_ids = [unitig.unitig_id for unitig in unitigs]
     dense = {unitig_id: index for index, unitig_id in enumerate(source_ids)}
     members = {unitig.unitig_id: list(unitig.members) for unitig in unitigs}
     node_matrix = _as_matrix(node_features, source_ids, "node features")
+    node_block, node_ann_names = annotation_feature_block(cdbg, node_annotation, source_ids, "node")
+    if node_block.shape[1]:
+        node_matrix = np.hstack([node_matrix, node_block])
     node_y = _as_labels(node_labels, source_ids)
     link_ids = [link.link_id for link in cdbg.links]
     edge_matrix = _as_matrix(edge_features, link_ids, "edge features")
+    edge_block, edge_ann_names = annotation_feature_block(cdbg, edge_annotation, link_ids, "edge")
+    if edge_block.shape[1]:
+        edge_matrix = np.hstack([edge_matrix, edge_block])
     edge_y = _as_labels(edge_labels, link_ids)
 
     colored = cdbg.colors or []
@@ -136,9 +158,11 @@ def cdbg_to_cgt(
                 edge_colors[slot, column[color_id]] = 1
 
     if node_feature_names is None:
-        node_feature_names = [f"f{i}" for i in range(node_matrix.shape[1])]
+        base_width = node_matrix.shape[1] - node_block.shape[1]
+        node_feature_names = [f"f{i}" for i in range(base_width)] + node_ann_names
     if edge_feature_names is None:
-        edge_feature_names = [f"f{i}" for i in range(edge_matrix.shape[1])]
+        base_width = edge_matrix.shape[1] - edge_block.shape[1]
+        edge_feature_names = [f"f{i}" for i in range(base_width)] + edge_ann_names
     if len(node_feature_names) != node_matrix.shape[1]:
         raise ContractError(["node_feature_names do not match the feature width"])
     if len(edge_feature_names) != edge_matrix.shape[1]:
@@ -160,6 +184,10 @@ def cdbg_to_cgt(
             "graph_id": cdbg.metadata.get("graph_id"),
         },
     }
+    if node_ann_names:
+        metadata["node_annotation_features"] = list(node_ann_names)
+    if edge_ann_names:
+        metadata["edge_annotation_features"] = list(edge_ann_names)
     mapping = [
         {
             "dense_id": dense[unitig.unitig_id],

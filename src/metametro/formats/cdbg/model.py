@@ -55,6 +55,9 @@ class Cdbg:
     """ToCUMG plus the mandatory CFA mapping.
 
     ``k`` is ``None`` when the source graph did not declare a de Bruijn ``k``.
+    ``annotations`` is an optional columnar sidecar. It is not a feature
+    matrix and it is not stored on each unitig. An empty list means the
+    graph has no annotation layers.
     """
 
     metadata: dict[str, Any]
@@ -64,3 +67,4 @@ class Cdbg:
     mapping: list[NodeMap]
     colors: list[dict[str, str]] | None = None
     labels: list[dict[str, str]] | None = None
+    annotations: list = field(default_factory=list)

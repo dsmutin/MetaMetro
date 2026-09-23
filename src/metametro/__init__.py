@@ -23,12 +23,23 @@ from metametro.identity import (
     link_cfa_edge_id,
     node_lineage,
 )
-from metametro.formats.cdbg import dump_cdbg, load_cdbg, validate_cdbg
+from metametro.formats.cdbg import (
+    aggregate_annotations,
+    annotate_cdbg,
+    dump_cdbg,
+    get_edge_annotations,
+    get_node_annotations,
+    load_cdbg,
+    transfer_annotations,
+    validate_cdbg,
+)
 from metametro.formats.cfa import dump_cfa, load_cfa, validate_cfa
 from metametro.formats.cgt import dump_cgt, load_cgt, validate_cgt
 
 __all__ = [
     "CONTRACTS",
+    "aggregate_annotations",
+    "annotate_cdbg",
     "assert_cgt_matches_cdbg",
     "cdbg_to_cfa",
     "cgt_edge_cfa_ids",
@@ -40,6 +51,8 @@ __all__ = [
     "dump_cfa",
     "dump_cgt",
     "edge_index_array",
+    "get_edge_annotations",
+    "get_node_annotations",
     "internal_cfa_edge_ids",
     "link_cfa_edge_id",
     "load_cdbg",
@@ -51,6 +64,7 @@ __all__ = [
     "node_lineage",
     "run_ds",
     "to_pyg",
+    "transfer_annotations",
     "validate_cdbg",
     "validate_cfa",
     "validate_cgt",

@@ -21,3 +21,21 @@ compaction: >-
   A graph with no overlap contract keeps identity unitigs of that same type.
   A unitig of N CFA members stores N-1 internal edge ids in member order.
   mapping ordinal i is member i of that unitig.
+optional_annotation_sidecar:
+  directory: annotations
+  version: "1.0"
+  note: >-
+    Optional files. Absent when the CDBG has no annotation layers. The
+    sidecar is columnar (one table per namespace, feature, and target
+    type). It does not change unitig, link, colour, sequence, or mapping
+    semantics and it is not a dense feature matrix. Schema remains 1.0.
+  target_types:
+    - node
+    - edge
+    - internal_node
+    - internal_edge
+  files:
+    - layers.yaml
+    - "<namespace>__<feature>__<target_type>.tsv"
+    - "<namespace>__<feature>__<target_type>.ids.tsv"
+    - "<namespace>__<feature>__<target_type>.npy"
