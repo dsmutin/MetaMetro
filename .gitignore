@@ -18,8 +18,8 @@ testing*/
 data/raw/
 data/work/
 
-# nested GitHub wiki clone metadata (markdown under wiki/ is tracked)
-wiki/.git/
+# the GitHub wiki is a separate clone kept outside this tree
+wiki/
 
 # conda / local envs
 .conda/

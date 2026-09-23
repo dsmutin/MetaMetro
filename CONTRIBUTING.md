@@ -17,11 +17,16 @@ scripts/        external baselines that pytest does not run (Samovar, MEGAHIT)
 docs/           formats, contracts, implementation, audits, run records
 data/           manifests, checksums, and gitignored raw and work trees
 cite/           BibTeX for integrated third-party tools
-wiki/           contracts, test data, integrative testing
 agents/         portable rules and skills (any IDE)
 ```
 
-Replace baseline bodies with real implementations. Keep the documented return keys until you change the contract in `wiki/Contracts.md` and the tests together.
+The GitHub wiki is a separate repository (`MetaMetro.wiki.git`). Clone it beside this one, not inside it:
+
+```bash
+git clone https://github.com/dsmutin/MetaMetro.wiki.git ../MetaMetro.wiki
+```
+
+Replace baseline bodies with real implementations. Keep the documented return keys until you change `docs/contracts.md`, the wiki page that mirrors it, and the tests together.
 
 ## Testing architecture
 
