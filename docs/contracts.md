@@ -73,9 +73,9 @@ Breaking: changing colour-set semantics, or a colouring pass that edits topology
 
 ## Contract 5 — CFA → CDBG
 
-Input: CFA sequences, topology, and colours when they exist. An uncoloured CFA may produce an uncoloured CDBG.
+Input: CFA sequences, topology, and colours when they exist. An uncoloured CFA may produce an uncoloured CDBG. `graph_type` may be `de_bruijn` or any other declared type (`repeat`, `lca`, and so on).
 
-Output: unitigs, links, colours, and `cfa_node_id → unitig_id` with path order. The compaction rule and the chain mock (6 nodes, 7 edges, 3 unitigs, 4 links) are specified in [formats.md](formats.md).
+Output: a ToCUMG (totally coloured universal metagenomic graph), stored as CDBG: unitigs, links, colours, and `cfa_node_id → unitig_id` with path order. Compaction does not change `graph_type` and does not add `k` unless the CFA already had it. The compaction rule and the chain mock (6 nodes, 7 edges, 3 unitigs, 4 links) are specified in [formats.md](formats.md).
 
 Preserved: nucleotide content (under the overlap rule), connectivity (internal edge or link), colours (per node on the mapping; union on the unitig), provenance through CFA ids. Changed: number of nodes, unitig ids, and the topology encoding.
 

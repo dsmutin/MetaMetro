@@ -43,17 +43,25 @@ def dump_cdbg(graph: Cdbg, path: str | Path) -> None:
                 "cfa_nodes": ",".join(unitig.members),
                 "internal_edge_ids": ",".join(unitig.internal_edge_ids),
                 "internal_edge_colors": _encode_edge_colors(unitig.internal_edge_colors),
+                "internal_overlaps": ",".join(str(value) for value in unitig.internal_overlaps),
             }
         )
     (root / "unitigs.fna").write_text("\n".join(fasta) + ("\n" if fasta else ""), encoding="utf-8")
     write_tsv(
         root / "unitigs.tsv",
-        ["unitig_id", "color_set", "cfa_nodes", "internal_edge_ids", "internal_edge_colors"],
+        [
+            "unitig_id",
+            "color_set",
+            "cfa_nodes",
+            "internal_edge_ids",
+            "internal_edge_colors",
+            "internal_overlaps",
+        ],
         unitig_rows,
     )
     write_tsv(
         root / "links.tsv",
-        ["link_id", "source", "target", "orientation", "color_set"],
+        ["link_id", "source", "target", "orientation", "color_set", "overlap"],
         [
             {
                 "link_id": link.link_id,
@@ -61,6 +69,7 @@ def dump_cdbg(graph: Cdbg, path: str | Path) -> None:
                 "target": link.target,
                 "orientation": "" if link.orientation is None else link.orientation,
                 "color_set": _join_ids(link.color_ids),
+                "overlap": "" if link.overlap is None else str(link.overlap),
             }
             for link in graph.links
         ],
@@ -130,6 +139,11 @@ def load_cdbg(path: str | Path, *, validate: bool = True) -> Cdbg:
         internal = [token for token in row.get("internal_edge_ids", "").split(",") if token]
         raw_colors = row.get("internal_edge_colors", "")
         color_groups = [] if raw_colors == "" else [_decode_color_piece(piece) for piece in raw_colors.split("|")]
+        raw_overlaps = row.get("internal_overlaps", "")
+        try:
+            overlaps = [] if raw_overlaps == "" else [int(piece) for piece in raw_overlaps.split(",") if piece]
+        except ValueError as exc:
+            raise ContractError([f"malformed internal_overlaps for {unitig_id}"]) from exc
         unitigs.append(
             Unitig(
                 unitig_id=unitig_id,
@@ -138,19 +152,29 @@ def load_cdbg(path: str | Path, *, validate: bool = True) -> Cdbg:
                 color_ids=parse_color_set(row.get("color_set", "")),
                 internal_edge_ids=internal,
                 internal_edge_colors=color_groups,
+                internal_overlaps=overlaps,
             )
         )
     _, link_rows = read_tsv(root / "links.tsv")
-    links = [
-        Link(
-            link_id=row["link_id"],
-            source=row["source"],
-            target=row["target"],
-            orientation=row["orientation"] or None,
-            color_ids=parse_color_set(row.get("color_set", "")),
+    links = []
+    for row in link_rows:
+        raw_overlap = row.get("overlap", "")
+        if raw_overlap == "":
+            overlap = None
+        elif not str(raw_overlap).isdigit():
+            raise ContractError([f"malformed overlap on link {row.get('link_id', '')}"])
+        else:
+            overlap = int(raw_overlap)
+        links.append(
+            Link(
+                link_id=row["link_id"],
+                source=row["source"],
+                target=row["target"],
+                orientation=row["orientation"] or None,
+                color_ids=parse_color_set(row.get("color_set", "")),
+                overlap=overlap,
+            )
         )
-        for row in link_rows
-    ]
     _, map_rows = read_tsv(root / "mapping.tsv")
     mapping = [
         NodeMap(
@@ -167,10 +191,16 @@ def load_cdbg(path: str | Path, *, validate: bool = True) -> Cdbg:
         _, colors = read_tsv(root / "colors.tsv")
     if (root / "labels.tsv").is_file():
         _, labels = read_tsv(root / "labels.tsv")
-    k = metadata.get("k")
+    raw_k = metadata.get("k")
+    if raw_k is None:
+        k: int | None = None
+    elif isinstance(raw_k, int) and not isinstance(raw_k, bool):
+        k = raw_k
+    else:
+        k = -1
     graph = Cdbg(
         metadata=metadata,
-        k=int(k) if isinstance(k, int) else -1,
+        k=k,
         unitigs=unitigs,
         links=links,
         mapping=mapping,

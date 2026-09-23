@@ -439,6 +439,90 @@ def directed_bubble_sources(edges: list[dict[str, str]], *, max_depth: int = 4) 
     return sorted(found)
 
 
+_GFA_OVERLAP = re.compile(r"^(\d+)M$")
+
+
+def gfa_to_cfa(gfa_path: str | Path, *, graph_id: str, graph_type: str = "repeat") -> CfaGraph:
+    """Load a GFA1 assembly graph (Flye repeat graph) as CFA.
+
+    One node per ``S`` segment and one edge per ``L`` link. A CIGAR of ``NM``
+    is stored as an integer edge ``overlap`` so compaction can use it.
+    ``graph_type`` is kept as given (``repeat`` by default). This loader does
+    not invent a de Bruijn ``k``.
+    """
+    if not str(graph_type).strip():
+        raise ContractError(["gfa_to_cfa requires graph_type"])
+    path = Path(gfa_path)
+    if not path.is_file() or path.stat().st_size == 0:
+        raise ContractError([f"GFA is missing or empty: {path}"])
+    sequences: dict[str, str] = {}
+    order: list[str] = []
+    links: list[tuple[str, str, str, str]] = []
+    for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.strip()
+        if line == "" or line.startswith("#"):
+            continue
+        fields = line.split("\t")
+        kind = fields[0]
+        if kind in {"H", "P", "W", "C"}:
+            continue
+        if kind == "S":
+            if len(fields) < 3 or fields[1] == "" or fields[2] in {"", "*"}:
+                raise ContractError([f"GFA segment on line {line_number} has no sequence"])
+            node_id = fields[1]
+            sequence = fields[2].upper()
+            if any(base not in "ACGTN" for base in sequence):
+                raise ContractError([f"malformed GFA sequence: {node_id}"])
+            if node_id in sequences:
+                raise ContractError([f"duplicate GFA segment: {node_id}"])
+            sequences[node_id] = sequence
+            order.append(node_id)
+            continue
+        if kind == "L":
+            if len(fields) < 6:
+                raise ContractError([f"GFA link on line {line_number} is incomplete"])
+            source, source_strand, target, target_strand, cigar = fields[1:6]
+            orientation = source_strand + target_strand
+            if orientation not in {"++", "+-", "-+", "--"}:
+                raise ContractError([f"GFA link on line {line_number} has orientation {orientation!r}"])
+            match = _GFA_OVERLAP.fullmatch(cigar)
+            if match is None:
+                raise ContractError([f"GFA link on line {line_number} has unsupported overlap {cigar!r}"])
+            links.append((source, target, orientation, match.group(1)))
+            continue
+        raise ContractError([f"unsupported GFA record on line {line_number}: {kind}"])
+    if not order:
+        raise ContractError([f"GFA has no segments: {path}"])
+    missing = sorted({node for link in links for node in link[:2]} - set(sequences))
+    if missing:
+        raise ContractError([f"GFA link names a missing segment: {node}" for node in missing])
+    return CfaGraph(
+        metadata={
+            "schema_version": "1.0",
+            "graph_id": graph_id,
+            "graph_type": graph_type,
+            "contract": "metagenome_to_graph",
+            "contract_version": "1.0",
+            "features": {"node": {}, "edge": {"orientation": "orientation", "overlap": "int"}},
+            "source": {"format": "gfa", "graph_type": graph_type},
+        },
+        sequences=sequences,
+        nodes=[{"node_id": node_id} for node_id in order],
+        edges=[
+            {
+                "edge_id": f"e{index:06d}",
+                "source": source,
+                "target": target,
+                "orientation": orientation,
+                "overlap": overlap,
+            }
+            for index, (source, target, orientation, overlap) in enumerate(links, start=1)
+        ],
+        node_header=["node_id"],
+        edge_header=["edge_id", "source", "target", "orientation", "overlap"],
+    )
+
+
 def contigs_to_dbg(contig_fasta: str | Path, *, k: int, graph_id: str) -> CfaGraph:
     """Contract 2 baseline for MEGAHIT contigs: a de Bruijn graph at ``k``."""
     records = _fasta_records(Path(contig_fasta))

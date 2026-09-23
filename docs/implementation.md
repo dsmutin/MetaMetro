@@ -18,14 +18,14 @@ Fixtures: `mock_cfa()`, `mock_cdbg()`, `mock_cgt()`, `chain_cfa()`, `synthetic_g
 | Contract | Module | What the minimal code does |
 | --- | --- | --- |
 | 1 | `contracts/assembly.py` `simulate_metagenome` | Deterministic slices of the source genomes. External path: `samovar generate`, then the generated `.generate/generate.sh` Snakemake script, which runs InSilicoSeq. |
-| 2 | `dbg_from_sequences`, `contigs_to_dbg`, `fastg_to_cfa` | k-mer de Bruijn graph. External command: MEGAHIT. The T-phage baseline loads MEGAHIT's intermediate FASTG so branches and bubbles survive; `strand_junction_counts` and `directed_bubble_sources` report that structure. |
+| 2 | `dbg_from_sequences`, `contigs_to_dbg`, `fastg_to_cfa`, `gfa_to_cfa` | k-mer de Bruijn graph, or a GFA repeat graph (`graph_type: repeat`) with per-link overlap. External commands: MEGAHIT and Flye. The T-phage baseline loads MEGAHIT's intermediate FASTG so branches and bubbles survive; `strand_junction_counts` and `directed_bubble_sources` report that structure. |
 | 3 | `formats/cfa` | Directory loader, dumper, and validator. The de Bruijn builder already emits CFA. |
 | 4 | `contracts/colouring.py` | Explicit set operations and the depth / density rule. k-mer graphs are counted in one pass over the reads; the counts match the general substring rule. |
-| 5 | `converters/cfa_to_cdbg.py` | Chain compaction described in `docs/formats.md`. |
+| 5 | `converters/cfa_to_cdbg.py` | ToCUMG chain compaction described in `docs/formats.md`. `graph_type` is unchanged. |
 | 6 | `converters/cdbg_to_cgt.py` | CSR, dense ids, aligned features and colours. |
 | 7 | `contracts/ds.py` | NumPy convolution by default; PyG `GCNConv` when requested. |
 
-Schema files live next to each format (`formats/*/schema.yaml`) and pin schema 1.0. Validators raise `ContractError` with every violation they collected.
+Schema files live next to each format (`formats/*/schema.yaml`) and pin schema 1.0. Validators raise `ContractError` with every violation they collected. The ONT + metaFlye repeat-graph run is in [repeat-graph-run.md](repeat-graph-run.md).
 
 ## What this tree deliberately does not do
 

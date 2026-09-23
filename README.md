@@ -9,7 +9,7 @@ Metagenomic assembly totally coloured graph representations
 
 **Warning: in development.** Interfaces may change. See `VERSION` (single source of truth).
 
-Three graph representations share one identity chain: **CFA** (canonical exchange) → **CDBG** (compacted colored de Bruijn graph) → **CGT** (CSR tensor for graph ML). Contracts and the minimal implementation are in [docs/formats.md](docs/formats.md), [docs/contracts.md](docs/contracts.md), and [docs/implementation.md](docs/implementation.md).
+Three graph representations share one identity chain: **CFA** (canonical exchange) → **CDBG** (ToCUMG: totally coloured universal metagenomic graph) → **CGT** (CSR tensor for graph ML). Contracts and the minimal implementation are in [docs/formats.md](docs/formats.md), [docs/contracts.md](docs/contracts.md), and [docs/implementation.md](docs/implementation.md).
 
 ```python
 from metametro import mock_cgt, run_ds

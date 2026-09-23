@@ -27,8 +27,14 @@ def validate_cdbg(graph: Cdbg) -> None:
         errors.append(
             f"incompatible schema version: {version!r} (supported CDBG schema is {SCHEMA_VERSION})"
         )
-    if not isinstance(graph.k, int) or isinstance(graph.k, bool) or graph.k <= 0:
+    graph_type = str(graph.metadata.get("graph_type", ""))
+    if not graph_type:
+        errors.append("missing required field: graph_type")
+    k_ok = isinstance(graph.k, int) and not isinstance(graph.k, bool) and graph.k > 0
+    if graph_type == "de_bruijn" and not k_ok:
         errors.append("k must be an integer > 0")
+    elif graph.k is not None and not k_ok:
+        errors.append("k must be an integer > 0 when present")
     unitig_ids: set[str] = set()
     member_owner: dict[str, str] = {}
     for unitig in graph.unitigs:
@@ -37,8 +43,10 @@ def validate_cdbg(graph: Cdbg) -> None:
         unitig_ids.add(unitig.unitig_id)
         if unitig.sequence == "" or any(base not in ALPHABET for base in unitig.sequence):
             errors.append(f"malformed sequence for {unitig.unitig_id}")
-        elif isinstance(graph.k, int) and graph.k > 0 and len(unitig.sequence) < graph.k:
+        elif graph_type == "de_bruijn" and k_ok and len(unitig.sequence) < graph.k:
             errors.append(f"unitig {unitig.unitig_id} is shorter than k")
+        if unitig.internal_overlaps and len(unitig.internal_overlaps) != max(0, len(unitig.members) - 1):
+            errors.append(f"unitig {unitig.unitig_id} overlaps do not match its CFA members")
         if not unitig.members:
             errors.append(f"unitig {unitig.unitig_id} has no CFA members")
         for node_id in unitig.members:

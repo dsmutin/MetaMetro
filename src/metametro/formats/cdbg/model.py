@@ -1,4 +1,9 @@
-"""In-memory compacted colored de Bruijn graph."""
+"""In-memory ToCUMG (totally coloured universal metagenomic graph).
+
+The on-disk name remains CDBG. ``graph_type`` is whatever the source graph
+declared (de Bruijn, repeat, LCA, or another type). ``k`` is present only
+when that graph declared it.
+"""
 
 from __future__ import annotations
 
@@ -19,6 +24,7 @@ class Unitig:
     color_ids: list[int]
     internal_edge_ids: list[str] = field(default_factory=list)
     internal_edge_colors: list[list[int]] = field(default_factory=list)
+    internal_overlaps: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -30,6 +36,7 @@ class Link:
     target: str
     orientation: str | None
     color_ids: list[int] = field(default_factory=list)
+    overlap: int | None = None
 
 
 @dataclass
@@ -45,10 +52,13 @@ class NodeMap:
 
 @dataclass
 class Cdbg:
-    """Compact colored graph plus the mandatory CFA mapping."""
+    """ToCUMG plus the mandatory CFA mapping.
+
+    ``k`` is ``None`` when the source graph did not declare a de Bruijn ``k``.
+    """
 
     metadata: dict[str, Any]
-    k: int
+    k: int | None
     unitigs: list[Unitig]
     links: list[Link]
     mapping: list[NodeMap]

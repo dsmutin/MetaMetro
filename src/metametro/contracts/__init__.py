@@ -6,6 +6,7 @@ from metametro.contracts.assembly import (
     dbg_from_sequences,
     directed_bubble_sources,
     fastg_to_cfa,
+    gfa_to_cfa,
     load_genomes,
     read_fastq,
     simulate_metagenome,
@@ -32,4 +33,5 @@ __all__ = [
     "contig_overlap_graph",
     "directed_bubble_sources",
     "fastg_to_cfa",
+    "gfa_to_cfa",
 ]

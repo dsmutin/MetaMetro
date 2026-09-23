@@ -11,7 +11,7 @@ Initial data → CFA → CDBG → Coloured Graph Tensor → analysis
 | Format | Role | Human-readable | ML-ready | Mutable |
 | --- | --- | --- | --- | --- |
 | CFA | Canonical exchange format | Yes | No | Yes |
-| CDBG | Compact colored de Bruijn graph | Partially | Indirectly | Limited |
+| CDBG | ToCUMG: totally coloured universal metagenomic graph | Partially | Indirectly | Limited |
 | CGT | Computation / ML representation | No | Yes | Yes |
 
 Physical files may gain optional columns and optional metadata. The changes in [contracts.md](contracts.md) that alter identifier, sequence, edge, colour, feature-order, dtype, topology, or mandatory-field semantics are breaking and require `schema_version: "2.0"` plus a migration.
@@ -61,7 +61,7 @@ Invariants checked by `validate_cfa`: unique node and edge ids, no dangling edge
 
 ## CDBG
 
-CDBG stores compacted topology, unitig sequences, sample colours, and the CFA mapping. It is not an annotation database and it does not store dense feature matrices. Unitig ids are not permanent biological ids.
+CDBG is the stored form of a ToCUMG (totally coloured universal metagenomic graph). It stores compacted topology, unitig sequences, sample colours, and the CFA mapping. The graph before and after compaction has the same `graph_type`. That type may be `de_bruijn`, `repeat`, `lca`, or any other declared type. A de Bruijn `k` is stored only when the source graph declared it. CDBG is not an annotation database and it does not store dense feature matrices. Unitig ids are not permanent biological ids.
 
 ```text
 cdbg/
@@ -74,7 +74,7 @@ cdbg/
 └── labels.tsv       # optional dictionary only
 ```
 
-Every unitig has `unitig_id`, `sequence` (length at least `k`), and `color_set`. `mapping.tsv` is mandatory:
+Every unitig has `unitig_id`, `sequence`, and `color_set`. For `graph_type: de_bruijn` the sequence is at least `k`. `unitigs.tsv` may carry `internal_overlaps`, and `links.tsv` may carry `overlap`; both are the integer overlap used at that junction. `mapping.tsv` is mandatory:
 
 ```text
 cfa_node_id    unitig_id    ordinal    length    color_set
@@ -86,7 +86,7 @@ A Bifrost `graph.gfa` / `graph.color.bfg` / `graph.bfi` bundle is an allowed bac
 
 ### Compaction rule (schema 1.0)
 
-For `graph_type: de_bruijn`, repeatedly merge the lexicographically first edge `u → v` such that `u` has out-degree 1, `v` has in-degree 1, `u` is not `v`, and the orientation is `++` or omitted. The surviving sequence is `seq(u) + seq(v)[k-1:]`. The `(k-1)` overlap must match; a mismatch raises and the edge is kept. Non-forward orientations are not fused. Graphs that are not de Bruijn graphs use identity unitigs (one CFA node each).
+Repeatedly merge the lexicographically first edge `u → v` such that `u` has out-degree 1, `v` has in-degree 1, `u` is not `v`, and the orientation is `++` or omitted. The surviving sequence is `seq(u) + seq(v)[overlap:]`. For `graph_type: de_bruijn` the overlap is `k - 1`. For any other type it is the edge `overlap` column when that column is set, otherwise metadata `overlap`. The overlapped bases must match; a mismatch raises and the edge is kept. Non-forward orientations are not fused. A graph with no overlap contract keeps identity unitigs (one CFA node each) and keeps its `graph_type`. `gfa_to_cfa` loads a Flye-style repeat graph (`S` segments and `L` links) with `graph_type: repeat` and the CIGAR overlap, and does not invent `k`.
 
 Unitig colour is the union of member node colours. Per-node colours remain on the mapping, so annotation transfer does not depend on that union. Every original edge is either an internal edge of one unitig or a link. Nothing is dropped.
 

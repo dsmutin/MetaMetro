@@ -251,6 +251,9 @@ def colour_by_reads(
 ) -> CfaGraph:
     """Colour nodes by read depth and edges by junction (k+1)-mer density.
 
+    ``graph_type`` is not restricted. The graph must declare integer ``k``,
+    because depth and junction density are counted in k-mers.
+
     ``reads`` entries are ``(read_id, sample_id, sequence)``. ``read_id`` is
     accepted so callers can keep provenance; it is not used as a colour.
     Samples absent from a node or edge contribute no colour. Depth is not
@@ -258,9 +261,10 @@ def colour_by_reads(
     """
     if min_vertex_depth < 1 or min_edge_kmer_density < 1:
         raise ContractError(["colour thresholds must be >= 1"])
-    if str(cfa.metadata.get("graph_type")) != "de_bruijn":
-        raise ContractError(["read colouring requires graph_type de_bruijn"])
-    k = int(cfa.metadata["k"])
+    raw_k = cfa.metadata.get("k")
+    if not isinstance(raw_k, int) or isinstance(raw_k, bool) or raw_k <= 0:
+        raise ContractError(["read colouring requires integer k > 0"])
+    k = raw_k
     sample_index = {sample: index for index, sample in enumerate(samples)}
     for _, sample_id, _ in reads:
         if sample_id not in sample_index:

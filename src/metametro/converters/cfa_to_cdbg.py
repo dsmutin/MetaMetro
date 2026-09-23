@@ -1,4 +1,9 @@
-"""CFA to CDBG compaction."""
+"""CFA to CDBG compaction.
+
+CDBG is the on-disk form of a ToCUMG (totally coloured universal
+metagenomic graph). Compaction keeps ``graph_type``. It does not relabel a
+repeat graph, an LCA graph, or any other graph as a de Bruijn graph.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +23,7 @@ class _Super:
     color_ids: set[int]
     internal_edge_ids: list[str] = field(default_factory=list)
     internal_edge_colors: list[list[int]] = field(default_factory=list)
+    internal_overlaps: list[int] = field(default_factory=list)
     outs: list[dict] = field(default_factory=list)
 
 
@@ -26,8 +32,32 @@ def _row_colors(row: dict[str, str]) -> list[int]:
     return sorted(set(parse_color_set(raw)))
 
 
-def _overlaps(left: str, right: str, k: int) -> bool:
-    overlap = k - 1
+def _metadata_overlap(metadata: dict) -> int | None:
+    if "overlap" not in metadata or metadata.get("overlap") is None:
+        return None
+    raw = metadata["overlap"]
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+        raise ContractError(["overlap must be an integer >= 0"])
+    return raw
+
+
+def _edge_overlap(row: dict[str, str], *, graph_type: str, k: int | None, default: int | None) -> int | None:
+    raw = row.get("overlap")
+    if raw not in (None, ""):
+        token = str(raw).strip()
+        if not token.isdigit():
+            raise ContractError([f"overlap on edge {row.get('edge_id', '')} must be an integer >= 0"])
+        return int(token)
+    if graph_type == "de_bruijn":
+        if k is None or k < 1:
+            raise ContractError(["de Bruijn compaction requires integer k > 0"])
+        return k - 1
+    return default
+
+
+def _sequences_overlap(left: str, right: str, overlap: int) -> bool:
+    if overlap < 0:
+        return False
     if overlap == 0:
         return True
     if len(left) < overlap or len(right) < overlap:
@@ -36,21 +66,33 @@ def _overlaps(left: str, right: str, k: int) -> bool:
 
 
 def cfa_to_cdbg(cfa: CfaGraph) -> Cdbg:
-    """Compact a CFA graph into a CDBG and keep a CFA node mapping.
+    """Compact a CFA graph into a ToCUMG and keep a CFA node mapping.
 
-    De Bruijn graphs merge an edge ``u -> v`` when ``u`` has out-degree 1,
-    ``v`` has in-degree 1, the edge is forward (``++`` or orientation omitted),
-    and the sequences overlap by ``k - 1``. A mismatch raises ``ContractError``
-    instead of dropping the edge. Other graph types become identity unitigs.
+    Any ``graph_type`` is preserved. A forward edge (``++`` or orientation
+    omitted) is merged when the source has out-degree 1, the target has
+    in-degree 1, and the two nodes are distinct. The overlap is ``k - 1`` for
+    ``de_bruijn``, the edge ``overlap`` column when that column is present,
+    or metadata ``overlap`` otherwise. A defined overlap that does not match
+    the sequences raises ``ContractError``. A graph with no overlap contract
+    keeps one unitig per node (``compaction: identity``) and the same type.
+    ``k`` is stored only when the CFA declared it.
+
     Unitig colours are the union of member node colours. Per-node colours stay
     on the mapping.
     """
     validate_cfa(cfa)
     graph_type = str(cfa.metadata.get("graph_type"))
-    de_bruijn = graph_type == "de_bruijn"
-    k = int(cfa.metadata["k"]) if de_bruijn else int(cfa.metadata.get("k") or 1)
+    raw_k = cfa.metadata.get("k")
+    if isinstance(raw_k, bool) or (raw_k is not None and not isinstance(raw_k, int)):
+        raise ContractError(["k must be an integer > 0 when present"])
+    k: int | None = raw_k
+    if graph_type == "de_bruijn" and (k is None or k <= 0):
+        raise ContractError(["de Bruijn compaction requires integer k > 0"])
+    if k is not None and k <= 0:
+        raise ContractError(["k must be an integer > 0 when present"])
+    default_overlap = _metadata_overlap(cfa.metadata)
     sequences = cfa.sequences
-    if de_bruijn:
+    if graph_type == "de_bruijn" and k is not None:
         short = [node_id for node_id, sequence in sequences.items() if len(sequence) < k]
         if short:
             raise ContractError([f"node {node_id} is shorter than k" for node_id in short])
@@ -66,13 +108,19 @@ def cfa_to_cdbg(cfa: CfaGraph) -> Cdbg:
         )
         for node_id in cfa.node_ids()
     }
+    saw_overlap = False
+    overlaps_used: set[int] = set()
     for row in sorted(cfa.edges, key=lambda item: item["edge_id"]):
         orientation = row.get("orientation") or None
         if orientation == "":
             orientation = None
-        colors = _row_colors(row)
-        if de_bruijn and orientation in (None, "++"):
-            if not _overlaps(sequences[row["source"]], sequences[row["target"]], k):
+        overlap = _edge_overlap(row, graph_type=graph_type, k=k, default=default_overlap)
+        if overlap is not None:
+            saw_overlap = True
+            overlaps_used.add(overlap)
+            if orientation in (None, "++") and not _sequences_overlap(
+                sequences[row["source"]], sequences[row["target"]], overlap
+            ):
                 raise ContractError(
                     [f"overlap mismatch on edge {row['edge_id']}; refusing to drop the edge"]
                 )
@@ -81,12 +129,13 @@ def cfa_to_cdbg(cfa: CfaGraph) -> Cdbg:
                 "edge_id": row["edge_id"],
                 "target": row["target"],
                 "orientation": orientation,
-                "color_ids": colors,
+                "color_ids": _row_colors(row),
+                "overlap": overlap,
             }
         )
 
-    if de_bruijn:
-        _compact(supers, k)
+    if saw_overlap:
+        _compact(supers)
 
     ordered = sorted(supers.values(), key=lambda item: tuple(item.members))
     id_of = {}
@@ -102,6 +151,7 @@ def cfa_to_cdbg(cfa: CfaGraph) -> Cdbg:
                 color_ids=sorted(super_node.color_ids),
                 internal_edge_ids=list(super_node.internal_edge_ids),
                 internal_edge_colors=[list(colors) for colors in super_node.internal_edge_colors],
+                internal_overlaps=list(super_node.internal_overlaps),
             )
         )
     links = []
@@ -115,6 +165,7 @@ def cfa_to_cdbg(cfa: CfaGraph) -> Cdbg:
                     target=id_of[edge["target"]],
                     orientation=edge["orientation"],
                     color_ids=list(edge["color_ids"]),
+                    overlap=edge["overlap"],
                 )
             )
     links.sort(key=lambda link: (link.source, link.target, link.link_id))
@@ -130,16 +181,25 @@ def cfa_to_cdbg(cfa: CfaGraph) -> Cdbg:
                     color_ids=list(node_colors.get(node_id, [])),
                 )
             )
-    metadata = {
+    if graph_type == "de_bruijn":
+        compaction = "de_bruijn_chain"
+    elif saw_overlap:
+        compaction = "chain"
+    else:
+        compaction = "identity"
+    metadata: dict = {
         "schema_version": SCHEMA_VERSION,
         "graph_id": cfa.metadata.get("graph_id"),
         "graph_type": graph_type,
-        "k": k,
         "contract": "cfa_to_cdbg",
         "contract_version": "1.0",
-        "compaction": "de_bruijn_chain" if de_bruijn else "identity",
+        "compaction": compaction,
         "source": {"format": "cfa", "graph_id": cfa.metadata.get("graph_id")},
     }
+    if k is not None:
+        metadata["k"] = k
+    if len(overlaps_used) == 1:
+        metadata["overlap"] = next(iter(overlaps_used))
     return Cdbg(
         metadata=metadata,
         k=k,
@@ -151,7 +211,7 @@ def cfa_to_cdbg(cfa: CfaGraph) -> Cdbg:
     )
 
 
-def _compact(supers: dict[str, _Super], k: int) -> None:
+def _compact(supers: dict[str, _Super]) -> None:
     while True:
         indeg = {key: 0 for key in supers}
         for super_node in supers.values():
@@ -168,25 +228,31 @@ def _compact(supers: dict[str, _Super], k: int) -> None:
                 continue
             if edge["orientation"] not in (None, "++"):
                 continue
+            if edge["overlap"] is None:
+                continue
             candidates.append((representative, edge["edge_id"], target))
         if not candidates:
             return
         representative, edge_id, target = candidates[0]
-        _merge(supers, representative, target, edge_id, k)
+        _merge(supers, representative, target, edge_id)
 
 
-def _merge(supers: dict[str, _Super], representative: str, target: str, edge_id: str, k: int) -> None:
+def _merge(supers: dict[str, _Super], representative: str, target: str, edge_id: str) -> None:
     left = supers[representative]
     right = supers[target]
-    overlap = k - 1
-    if left.sequence[-overlap:] != right.sequence[:overlap]:
+    consumed = left.outs[0]
+    overlap = consumed["overlap"]
+    if overlap is None or not _sequences_overlap(left.sequence, right.sequence, overlap):
         raise ContractError([f"overlap mismatch on edge {edge_id}; refusing to drop the edge"])
     left.sequence = left.sequence + right.sequence[overlap:]
     left.members.extend(right.members)
     left.color_ids |= right.color_ids
-    consumed = left.outs[0]
     left.internal_edge_ids.append(edge_id)
+    left.internal_edge_ids.extend(right.internal_edge_ids)
     left.internal_edge_colors.append(list(consumed["color_ids"]))
+    left.internal_edge_colors.extend(list(colors) for colors in right.internal_edge_colors)
+    left.internal_overlaps.append(overlap)
+    left.internal_overlaps.extend(right.internal_overlaps)
     left.outs = list(right.outs)
     for super_node in supers.values():
         for edge in super_node.outs:

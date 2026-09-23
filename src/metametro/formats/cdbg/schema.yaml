@@ -1,9 +1,9 @@
-# Compacted colored de Bruijn graph (CDBG), schema 1.0.
+# ToCUMG (totally coloured universal metagenomic graph), stored as CDBG schema 1.0.
+# graph_type is preserved. k is required only for graph_type de_bruijn.
 schema_version: "1.0"
 contract: cfa_to_cdbg
 contract_version: "1.0"
 mandatory_members:
-  - k
   - unitigs
   - links
   - colors
@@ -14,7 +14,8 @@ unitig_required:
   - color_set
 mapping_direction: cdbg_unitig_id_to_cfa_node_ids
 compaction: >-
-  For graph_type de_bruijn, merge an edge u->v when u has out-degree 1,
-  v has in-degree 1, u is not v, and the edge orientation is ++ or absent.
-  Sequence concatenation keeps a (k-1) overlap and refuses a mismatch.
-  Other graph types use identity unitigs (one CFA node each).
+  Merge an edge u->v when u has out-degree 1, v has in-degree 1, u is not v,
+  and the edge orientation is ++ or absent. The overlap is k-1 for
+  graph_type de_bruijn, the edge overlap column when present, or metadata
+  overlap otherwise. A mismatch is refused. graph_type is unchanged.
+  A graph with no overlap contract keeps identity unitigs of that same type.
