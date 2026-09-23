@@ -92,9 +92,11 @@ Input: a CDBG plus optional feature and label arrays. Arrays follow unitig-id or
 
 Output: the CGT in [formats.md](formats.md). Construction is one pass over unitigs, links, and feature rows. It does not look up a graph object per feature assignment. The CGT is still not a semantic graph format.
 
-Labels are a separate integer layer. They are not concatenated into `X_node`.
+Labels are a separate integer layer. They are not concatenated into `X_node` or `X_edge`. Colours stay on `C_node` / `C_edge`. The feature registry records each `X` column's name, type `feature`, namespace, source annotation, normalization, and dtype. `node_feature_names` and `edge_feature_names` remain. A missing registry on an older directory is valid and does not change the arrays. Normalization is stored as `none` unless a caller recorded another string; the converter does not rescale values. An unnamed ndarray is marked positional with an empty namespace. A sidecar column keeps its `namespace:feature` name and records that layer as the source annotation.
 
-Breaking: changing dense-id order, CSR meaning, feature order, or dtypes. A different physical container (Arrow, memmap, torch) is non-breaking if the logical arrays match.
+CSR remains the canonical topology. `csc_from_cgt` may derive incoming adjacency for predecessor walks. That index is not stored, is not required on load, and does not reorder `edge_features`. `resolve_sequence` reads a unitig sequence from the source CDBG. The CGT row does not gain a DNA column.
+
+Breaking: changing dense-id order, CSR meaning, feature order, or dtypes. A different physical container (Arrow, memmap, torch) is non-breaking if the logical arrays match. Optional registry metadata and a derived CSC index are non-breaking.
 
 ## Contract 7 — analysis on CGT
 
@@ -105,16 +107,19 @@ The NumPy model aggregates each node with itself and its outgoing neighbors, the
 Output:
 
 ```text
-result[]: dense_id, source_id, cfa_node_ids, predicted_label, probability
+result[]: dense_id, source_id, cfa_node_ids, predicted_label, probability,
+          predicted_class, confidence, model_id, model_version
 mapping
-metadata: contract, backend, seed, epochs
+metadata: contract, backend, model_id, model_version, confidence, seed, epochs
 ```
+
+`predicted_label` and `probability` stay. `predicted_class` is the same integer as `predicted_label`. `confidence` is that class probability. The current models return only a softmax distribution, so confidence is not a separate uncertainty estimate and not an accuracy. `predictions_from_ds` builds one node `GraphPrediction` per result row. Those objects are joinable by `dense_id`, `source_id`, and CFA node ids. They are not written into the CGT. `run_ds` does not emit edge predictions. `edge_prediction` can represent one edge when the caller supplies the class, the probability, the confidence, and a CDBG. It stores the CSR slot and the CFA edge id and does not modify the CGT.
 
 The function copies arrays before training and raises if the input CGT changed. A model that appends embeddings must return a new CGT or a result table. It must not write into the caller's arrays.
 
 The mock check is: prediction count equals node count, and each prediction still carries the original CFA ids. Accuracy on the four-node bubble is not a performance claim.
 
-Breaking: results that cannot be joined back to `dense_id` or CFA id. A different model is non-breaking.
+Breaking: results that cannot be joined back to `dense_id` or CFA id, or removing `predicted_label` or `probability`. Adding prediction fields is non-breaking. A different model is non-breaking.
 
 ## Breaking-change rule
 

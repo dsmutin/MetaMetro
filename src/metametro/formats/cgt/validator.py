@@ -6,6 +6,7 @@ import numpy as np
 
 from metametro.errors import ContractError
 from metametro.formats.cgt.model import SCHEMA_VERSION, Cgt
+from metametro.formats.cgt.registry import validate_feature_registry
 
 
 def _i64(array: np.ndarray, name: str, errors: list[str]) -> None:
@@ -76,6 +77,22 @@ def validate_cgt(graph: Cgt) -> None:
     if isinstance(edge_names, list) and graph.edge_features.ndim == 2:
         if len(edge_names) != graph.edge_features.shape[1]:
             errors.append("edge_feature_names do not match X_edge width")
+    if graph.node_features.ndim == 2:
+        validate_feature_registry(
+            metadata,
+            "node_feature_registry",
+            "node_feature_names",
+            int(graph.node_features.shape[1]),
+            errors,
+        )
+    if graph.edge_features.ndim == 2:
+        validate_feature_registry(
+            metadata,
+            "edge_feature_registry",
+            "edge_feature_names",
+            int(graph.edge_features.shape[1]),
+            errors,
+        )
     if graph.node_labels is not None:
         if graph.node_labels.shape != (n,) or graph.node_labels.dtype != np.int64:
             errors.append("node labels must have shape (N,) and dtype int64")

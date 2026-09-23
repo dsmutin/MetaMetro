@@ -17,6 +17,7 @@ from metametro.formats.cdbg.annotations import annotation_feature_block
 from metametro.formats.cdbg.model import Cdbg
 from metametro.formats.cdbg.validator import validate_cdbg
 from metametro.formats.cgt.model import SCHEMA_VERSION, Cgt
+from metametro.formats.cgt.registry import build_feature_registry
 
 
 def _as_matrix(
@@ -86,6 +87,31 @@ def _as_labels(
     return np.asarray([int(values[key]) for key in keys], dtype=np.int64)
 
 
+def _resolve_feature_names(
+    names: Sequence[str] | None,
+    *,
+    width: int,
+    explicit_width: int,
+    annotation_names: Sequence[str],
+    kind: str,
+) -> tuple[list[str], bool]:
+    """Return column names and whether the explicit block is positional.
+
+    Omitted names become ``f0``, ``f1``, ... plus the sidecar column names.
+    A list as wide as the explicit block is those names, with sidecar names
+    appended. A list as wide as the full matrix is used as given. Any other
+    length is an error.
+    """
+    if names is None:
+        return [f"f{index}" for index in range(explicit_width)] + list(annotation_names), True
+    resolved = list(names)
+    if len(resolved) == explicit_width:
+        return resolved + list(annotation_names), False
+    if len(resolved) == width:
+        return resolved, False
+    raise ContractError([f"{kind}_feature_names do not match the feature width"])
+
+
 def cdbg_to_cgt(
     cdbg: Cdbg,
     node_features: np.ndarray | Mapping[str, Sequence[float]] | None = None,
@@ -109,7 +135,17 @@ def cdbg_to_cgt(
     columns are appended after the explicit feature columns. When feature
     names are omitted, explicit columns are named ``f0``, ``f1``, ... and
     annotation columns are named ``namespace:feature`` (or
-    ``namespace:feature:i`` for a vector).
+    ``namespace:feature:i`` for a vector). A name list as wide as the
+    explicit array is kept, and those sidecar names are appended. A name
+    list as wide as the full matrix is used as given.
+
+    ``node_feature_names`` and ``edge_feature_names`` stay in metadata.
+    ``node_feature_registry`` and ``edge_feature_registry`` describe the same
+    columns. An unnamed ndarray is marked positional with an empty namespace.
+    A sidecar column records that namespace and ``source_annotation``.
+    Normalization is recorded as ``none``; values are not rescaled. Labels
+    stay on ``y_node`` / ``y_edge`` and are not appended to the feature
+    matrices.
     """
     validate_cdbg(cdbg)
     unitigs = sorted(cdbg.unitigs, key=lambda unitig: unitig.unitig_id)
@@ -117,13 +153,17 @@ def cdbg_to_cgt(
     dense = {unitig_id: index for index, unitig_id in enumerate(source_ids)}
     members = {unitig.unitig_id: list(unitig.members) for unitig in unitigs}
     node_matrix = _as_matrix(node_features, source_ids, "node features")
-    node_block, node_ann_names = annotation_feature_block(cdbg, node_annotation, source_ids, "node")
+    node_block, node_ann_names, node_ann_sources = annotation_feature_block(
+        cdbg, node_annotation, source_ids, "node"
+    )
     if node_block.shape[1]:
         node_matrix = np.hstack([node_matrix, node_block])
     node_y = _as_labels(node_labels, source_ids)
     link_ids = [link.link_id for link in cdbg.links]
     edge_matrix = _as_matrix(edge_features, link_ids, "edge features")
-    edge_block, edge_ann_names = annotation_feature_block(cdbg, edge_annotation, link_ids, "edge")
+    edge_block, edge_ann_names, edge_ann_sources = annotation_feature_block(
+        cdbg, edge_annotation, link_ids, "edge"
+    )
     if edge_block.shape[1]:
         edge_matrix = np.hstack([edge_matrix, edge_block])
     edge_y = _as_labels(edge_labels, link_ids)
@@ -157,16 +197,32 @@ def cdbg_to_cgt(
             if color_id in column:
                 edge_colors[slot, column[color_id]] = 1
 
-    if node_feature_names is None:
-        base_width = node_matrix.shape[1] - node_block.shape[1]
-        node_feature_names = [f"f{i}" for i in range(base_width)] + node_ann_names
-    if edge_feature_names is None:
-        base_width = edge_matrix.shape[1] - edge_block.shape[1]
-        edge_feature_names = [f"f{i}" for i in range(base_width)] + edge_ann_names
-    if len(node_feature_names) != node_matrix.shape[1]:
-        raise ContractError(["node_feature_names do not match the feature width"])
-    if len(edge_feature_names) != edge_matrix.shape[1]:
-        raise ContractError(["edge_feature_names do not match the feature width"])
+    node_feature_names, node_positional = _resolve_feature_names(
+        node_feature_names,
+        width=node_matrix.shape[1],
+        explicit_width=node_matrix.shape[1] - node_block.shape[1],
+        annotation_names=node_ann_names,
+        kind="node",
+    )
+    edge_feature_names, edge_positional = _resolve_feature_names(
+        edge_feature_names,
+        width=edge_matrix.shape[1],
+        explicit_width=edge_matrix.shape[1] - edge_block.shape[1],
+        annotation_names=edge_ann_names,
+        kind="edge",
+    )
+    node_registry = build_feature_registry(
+        list(node_feature_names),
+        explicit_count=node_matrix.shape[1] - len(node_ann_sources),
+        positional=node_positional,
+        annotation_sources=node_ann_sources,
+    )
+    edge_registry = build_feature_registry(
+        list(edge_feature_names),
+        explicit_count=edge_matrix.shape[1] - len(edge_ann_sources),
+        positional=edge_positional,
+        annotation_sources=edge_ann_sources,
+    )
 
     metadata = {
         "schema_version": SCHEMA_VERSION,
@@ -174,6 +230,8 @@ def cdbg_to_cgt(
         "num_edges": len(order),
         "node_feature_names": list(node_feature_names),
         "edge_feature_names": list(edge_feature_names),
+        "node_feature_registry": node_registry,
+        "edge_feature_registry": edge_registry,
         "node_feature_dtype": "float32",
         "edge_feature_dtype": "float32",
         "topology": "csr",

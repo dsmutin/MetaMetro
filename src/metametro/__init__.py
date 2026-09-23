@@ -22,6 +22,7 @@ from metametro.identity import (
     internal_cfa_edge_ids,
     link_cfa_edge_id,
     node_lineage,
+    resolve_sequence,
 )
 from metametro.formats.cdbg import (
     aggregate_annotations,
@@ -34,7 +35,15 @@ from metametro.formats.cdbg import (
     validate_cdbg,
 )
 from metametro.formats.cfa import dump_cfa, load_cfa, validate_cfa
-from metametro.formats.cgt import dump_cgt, load_cgt, validate_cgt
+from metametro.formats.cgt import (
+    GraphPrediction,
+    csc_from_cgt,
+    dump_cgt,
+    edge_prediction,
+    load_cgt,
+    predictions_from_ds,
+    validate_cgt,
+)
 
 __all__ = [
     "CONTRACTS",
@@ -42,7 +51,9 @@ __all__ = [
     "annotate_cdbg",
     "assert_cgt_matches_cdbg",
     "cdbg_to_cfa",
+    "GraphPrediction",
     "cgt_edge_cfa_ids",
+    "csc_from_cgt",
     "cdbg_to_cgt",
     "cfa_to_cdbg",
     "chain_cdbg",
@@ -51,6 +62,7 @@ __all__ = [
     "dump_cfa",
     "dump_cgt",
     "edge_index_array",
+    "edge_prediction",
     "get_edge_annotations",
     "get_node_annotations",
     "internal_cfa_edge_ids",
@@ -62,6 +74,8 @@ __all__ = [
     "mock_cfa",
     "mock_cgt",
     "node_lineage",
+    "predictions_from_ds",
+    "resolve_sequence",
     "run_ds",
     "to_pyg",
     "transfer_annotations",

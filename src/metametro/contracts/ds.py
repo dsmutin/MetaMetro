@@ -7,6 +7,7 @@ is used when ``backend='pyg'`` and the package is installed.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -14,6 +15,23 @@ import numpy as np
 from metametro.errors import ContractError
 from metametro.formats.cgt.model import Cgt
 from metametro.formats.cgt.validator import validate_cgt
+
+
+_MODEL_IDS = {
+    "numpy": "numpy_softmax_gcn",
+    "pyg": "pyg_softmax_gcn",
+}
+
+
+def _package_version() -> str:
+    """Read the repository VERSION file. Do not invent a version string."""
+    path = Path(__file__).resolve().parents[3] / "VERSION"
+    if not path.is_file():
+        raise ContractError([f"missing VERSION file: {path}"])
+    text = path.read_text(encoding="utf-8").strip()
+    if text == "":
+        raise ContractError(["VERSION file is empty"])
+    return text
 
 
 def _aggregate(indptr: np.ndarray, indices: np.ndarray, features: np.ndarray) -> np.ndarray:
@@ -123,31 +141,54 @@ def run_ds(
     seed: int = 0,
     backend: str = "numpy",
 ) -> dict[str, Any]:
-    """Predict a label per dense node id. The input CGT arrays are not written."""
+    """Predict a label per dense node id. The input CGT arrays are not written.
+
+    Each result row keeps ``dense_id``, ``source_id``, ``cfa_node_ids``,
+    ``predicted_label``, and ``probability``. ``predicted_class`` repeats
+    ``predicted_label``. ``confidence`` is that same class probability.
+    The NumPy and PyG models only return a softmax distribution, so
+    confidence is not a second uncertainty estimator. This function does
+    not emit edge predictions.
+    """
     validate_cgt(cgt)
     before = (
         np.array(cgt.node_features, copy=True),
         None if cgt.node_labels is None else np.array(cgt.node_labels, copy=True),
+        np.array(cgt.edge_features, copy=True),
+        np.array(cgt.indptr, copy=True),
+        np.array(cgt.indices, copy=True),
     )
     if backend == "numpy":
         predicted, probabilities = train_numpy_gcn(cgt, epochs=epochs, seed=seed)
+        model_id = _MODEL_IDS["numpy"]
     elif backend == "pyg":
         predicted, probabilities = train_pyg_gcn(cgt, epochs=epochs, seed=seed)
+        model_id = _MODEL_IDS["pyg"]
     else:
         raise ContractError([f"unknown DS backend: {backend}"])
     if not np.array_equal(before[0], cgt.node_features):
         raise ContractError(["DS mutated CGT node features"])
     if before[1] is not None and not np.array_equal(before[1], cgt.node_labels):
         raise ContractError(["DS mutated CGT node labels"])
+    if not np.array_equal(before[2], cgt.edge_features):
+        raise ContractError(["DS mutated CGT edge features"])
+    if not np.array_equal(before[3], cgt.indptr) or not np.array_equal(before[4], cgt.indices):
+        raise ContractError(["DS mutated CGT topology"])
+    model_version = _package_version()
     rows = []
     for row, label, probability in zip(cgt.mapping, predicted, probabilities):
+        class_probability = float(probability[int(label)])
         rows.append(
             {
                 "dense_id": int(row["dense_id"]),
                 "source_id": row["source_id"],
                 "cfa_node_ids": list(row["cfa_node_ids"]),
                 "predicted_label": int(label),
-                "probability": float(probability[int(label)]),
+                "predicted_class": int(label),
+                "probability": class_probability,
+                "confidence": class_probability,
+                "model_id": model_id,
+                "model_version": model_version,
             }
         )
     return {
@@ -157,6 +198,9 @@ def run_ds(
             "contract": "ds_on_cgt",
             "contract_version": "1.0",
             "backend": backend,
+            "model_id": model_id,
+            "model_version": model_version,
+            "confidence": "softmax_probability",
             "seed": seed,
             "epochs": epochs,
             "num_predictions": len(rows),

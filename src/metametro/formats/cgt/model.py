@@ -17,7 +17,9 @@ class Cgt:
 
     Node ``i`` and every node-aligned array row ``i`` are the same dense id.
     Edge slot ``j`` in ``indices`` / ``edge_features`` / ``edge_labels`` /
-    ``edge_colors`` is the same directed adjacency entry.
+    ``edge_colors`` is the same directed adjacency entry. ``X`` holds
+    features, ``y`` holds training labels, and ``C`` holds colours. Model
+    predictions are not stored on this object.
     """
 
     metadata: dict[str, Any]

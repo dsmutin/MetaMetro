@@ -137,22 +137,48 @@ This sidecar is not a CGT feature matrix. A CGT matrix has one float32 row for e
 
 ## Coloured Graph Tensor
 
-CGT is the runtime ML object. It has no DNA sequence requirement, no dense `N×N` adjacency, and no per-node Python objects. Topology is CSR (`indptr`, `indices`). Optional CSC is not part of schema 1.0.
+CGT is the runtime ML object. It has no DNA sequence requirement, no dense `N×N` adjacency, and no per-node Python objects. It is a computational representation, not the biological source of truth and not a fourth semantic graph format. Topology stored on disk is CSR (`indptr`, `indices`). `metadata.topology` stays `csr`.
 
-Nodes are renumbered `0 .. N-1` in unitig-id order. `mapping.tsv` stores `dense_id`, `source_id` (CDBG unitig id), and `cfa_node_ids`. `metametro.identity` reads that row, and it reads each CSR edge slot back to the CDBG link id. The link id is the CFA edge id. Internal unitig edges are not CSR edges. A unitig id is not a biological name.
+Nodes are renumbered `0 .. N-1` in unitig-id order. `mapping.tsv` stores `dense_id`, `source_id` (CDBG unitig id), and `cfa_node_ids`. `metametro.identity` reads that row, and it reads each CSR edge slot back to the CDBG link id. The link id is the CFA edge id. Internal unitig edges are not CSR edges. A unitig id is not a biological name. DNA stays on the CDBG unitig. `resolve_sequence(cgt, source_cdbg, dense_id)` reads it through that mapping. A missing unitig, a dense id outside range, or a CGT/CDBG mismatch raises `ContractError`.
 
 ```text
-X_node  float32  (N, F_v)     F_v = 0 is allowed
-X_edge  float32  (E, F_e)     F_e = 0 is allowed
-y_node  int64    (N,)         optional
-y_edge  int64    (E,)         optional
-C_node  uint8    (N, S)
-C_edge  uint8    (E, S)
+X_node  float32  (N, F_v)     features. F_v = 0 is allowed
+X_edge  float32  (E, F_e)     features. F_e = 0 is allowed
+y_node  int64    (N,)         training labels, optional
+y_edge  int64    (E,)         training labels, optional
+C_node  uint8    (N, S)       colours
+C_edge  uint8    (E, S)       colours
 ```
+
+Features, training labels, colours, predictions, and confidence are different objects:
+
+| Object | Role |
+| --- | --- |
+| `X_node` / `X_edge` | Numeric features used by a model. Described by the feature registry. |
+| `y_node` / `y_edge` | Integer training labels. They are not columns of `X` and are not concatenated into `X`. |
+| `C_node` / `C_edge` | Sample colours. A colour is not a feature and not a label. |
+| prediction | A separate object joined by `dense_id`, `source_id`, and CFA ids. It is not written into the CGT arrays. |
+| confidence | A field on that prediction. The NumPy and PyG softmax models set it equal to the predicted class probability. That is not a second uncertainty estimator and not an accuracy. |
 
 `indices[j]`, `edge_features[j]`, `edge_labels[j]`, and `edge_colors[j]` are the same directed adjacency entry. Node row `i` matches dense id `i`. Feature names and dtypes are in `metadata.yaml`. Colour columns follow sorted `color_id`. For this minimal schema the colour matrix is dense; a bitset or a sparse matrix is a non-breaking physical choice as long as the node-to-colour-set semantics stay the same.
 
-On-disk arrays are NumPy `.npy` files. That choice is not part of the logical contract.
+`node_feature_names` and `edge_feature_names` remain the column order. `node_feature_registry` and `edge_feature_registry` are optional extra metadata for the same columns. A schema-1.0 directory written without those keys still loads. Loading does not invent a registry and does not change array values. Each registry entry records:
+
+```text
+name                  # the column name; f0, f1 only when the caller passed an unnamed ndarray
+feature_type          # feature
+namespace             # sidecar namespace, or empty when the column is not from an annotation layer
+source_annotation     # empty, or namespace:feature for the sidecar layer (vector columns share that source)
+normalization         # recorded, not applied; none means the values were copied unchanged
+dtype                 # float32
+positional            # true only for an unnamed ndarray; namespace is then empty
+```
+
+An unnamed ndarray is marked positional. Those names are not a biological namespace. A caller-supplied name list as wide as the explicit array names that block, and sidecar names are appended after it. A list as wide as the full matrix, including sidecar columns, is stored as given. Either way the explicit block has an empty namespace. A sidecar column uses `namespace:feature` or `namespace:feature:i` unless the full name list replaced that string, and the registry still records the layer as `source_annotation`.
+
+CSR stays canonical because every feature, label, and colour row is defined on a source-major slot. `csc_from_cgt` derives an incoming-neighbor index (`indptr`, `indices`, and the CSR slot of each incoming edge) from those arrays. It does not write the CGT, does not reorder `edge_features`, and is not required to load a directory. CSC is a view for predecessor walks. It is not a stored topology and not a dense adjacency.
+
+On-disk arrays are NumPy `.npy` files. That choice is not part of the logical contract. Predictions are not files in the CGT directory.
 
 ## PyG adapter
 

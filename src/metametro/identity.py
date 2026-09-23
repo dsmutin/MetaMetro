@@ -98,6 +98,38 @@ def internal_cfa_edge_ids(cdbg: Cdbg, unitig_id: str) -> tuple[str, ...]:
     return tuple(found[0].internal_edge_ids)
 
 
+def resolve_sequence(cgt: Cgt, source_cdbg: Cdbg, dense_id: int) -> str:
+    """Return the CDBG unitig sequence for one CGT dense id.
+
+    CGT rows do not store DNA. The sequence is read from ``source_cdbg``
+    after ``dense_id`` is mapped to a unitig id. A dense id outside
+    ``0 .. N-1``, a unitig id that is not on the CDBG, an empty sequence, or
+    any other CGT/CDBG membership mismatch raises ``ContractError``. No
+    sequence is invented.
+    """
+    lineage = node_lineage(cgt, dense_id)
+    cgt_graph = cgt.metadata.get("source", {}).get("graph_id") if isinstance(cgt.metadata.get("source"), dict) else None
+    cdbg_graph = source_cdbg.metadata.get("graph_id")
+    if (
+        isinstance(cgt_graph, str)
+        and cgt_graph != ""
+        and isinstance(cdbg_graph, str)
+        and cdbg_graph != ""
+        and cgt_graph != cdbg_graph
+    ):
+        raise ContractError(
+            [f"CGT source graph_id {cgt_graph} does not match CDBG graph_id {cdbg_graph}"]
+        )
+    assert_cgt_matches_cdbg(cgt, source_cdbg)
+    found = [unitig for unitig in source_cdbg.unitigs if unitig.unitig_id == lineage.source_id]
+    if len(found) != 1:
+        raise ContractError([f"missing unitig {lineage.source_id}"])
+    sequence = found[0].sequence
+    if not isinstance(sequence, str) or sequence == "":
+        raise ContractError([f"unitig {lineage.source_id} has no sequence"])
+    return sequence
+
+
 def cgt_edge_cfa_ids(cdbg: Cdbg) -> tuple[str, ...]:
     """Return the CFA edge id of each CSR edge in ``cdbg_to_cgt`` order.
 

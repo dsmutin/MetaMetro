@@ -381,16 +381,21 @@ def annotation_feature_block(
     specs: Sequence[tuple[str, str]] | None,
     keys: Sequence[str],
     target_type: str,
-) -> tuple[np.ndarray, list[str]]:
+) -> tuple[np.ndarray, list[str], list[tuple[str, str]]]:
     """Build a float32 block aligned to ``keys`` from selected layers.
 
     ``target_type`` ``node`` reads unitig annotations. ``edge`` reads CDBG
     link annotations. An internal-edge layer is refused here because those
     edges are not CSR edges. Category layers are refused because ``X_node``
     and ``X_edge`` are float32. A key with no row raises ``ContractError``.
+
+    The third value is one ``(namespace, source_annotation)`` pair per
+    column. ``source_annotation`` is ``namespace:feature`` for the sidecar
+    layer. A vector column ``namespace:feature:i`` keeps that same source.
     """
     parsed = _parse_specs(specs, "node_annotation" if target_type == "node" else "edge_annotation")
     width_names: list[str] = []
+    sources: list[tuple[str, str]] = []
     blocks: list[np.ndarray] = []
     for namespace, feature in parsed:
         layer = _layer_for_features(cdbg, namespace, feature, target_type)
@@ -404,16 +409,19 @@ def annotation_feature_block(
             raise ContractError([f"missing annotation target: {key}" for key in missing])
         positions = np.asarray([lookup[key] for key in keys], dtype=np.int64)
         block = np.asarray(layer.values[positions], dtype=np.float32)
+        source = f"{namespace}:{feature}"
         if layer.kind == "scalar":
             block = block.reshape(len(keys), 1)
-            width_names.append(f"{namespace}:{feature}")
+            width_names.append(source)
+            sources.append((namespace, source))
         else:
             block = block.reshape(len(keys), layer.values.shape[1])
-            width_names.extend(f"{namespace}:{feature}:{index}" for index in range(block.shape[1]))
+            width_names.extend(f"{source}:{index}" for index in range(block.shape[1]))
+            sources.extend((namespace, source) for _ in range(block.shape[1]))
         blocks.append(block)
     if not blocks:
-        return np.zeros((len(keys), 0), dtype=np.float32), []
-    return np.hstack(blocks), width_names
+        return np.zeros((len(keys), 0), dtype=np.float32), [], []
+    return np.hstack(blocks), width_names, sources
 
 
 def annotation_errors(graph: Cdbg) -> list[str]:

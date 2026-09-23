@@ -72,22 +72,43 @@ def test_long_unitig_keeps_internal_cfa_edge_ids() -> None:
         assert link_cfa_edge_id(cdbg, link.link_id) == link.link_id
 
 
-def test_csr_edge_ids_follow_permuted_links() -> None:
-    """Edge features stay on the CFA edge after links are permuted into CSR order."""
+def _assert_permuted_link_payloads(order: list[int]) -> None:
+    """Features, labels, and colours on slot j match the CFA edge of that slot."""
     cdbg = mock_cdbg()
-    cdbg.links = list(reversed(cdbg.links))
+    cdbg.links = [cdbg.links[index] for index in order]
     link_ids = [link.link_id for link in cdbg.links]
+    by_id = {link.link_id: link for link in cdbg.links}
     features = np.arange(len(link_ids), dtype=np.float32).reshape(-1, 1)
-    cgt = cdbg_to_cgt(cdbg, edge_features=features, edge_feature_names=["slot"])
+    labels = np.arange(100, 100 + len(link_ids), dtype=np.int64)
+    cgt = cdbg_to_cgt(
+        cdbg,
+        edge_features=features,
+        edge_labels=labels,
+        edge_feature_names=["slot"],
+    )
     recovered = cgt_edge_cfa_ids(cdbg)
     assert list(recovered) != link_ids
+    column = {color_id: index for index, color_id in enumerate(cgt.color_ids)}
     for slot, edge_id in enumerate(recovered):
-        assert cgt.edge_features[slot, 0] == np.float32(link_ids.index(edge_id))
-        assert list(cgt.indices)[slot] == next(
+        origin = link_ids.index(edge_id)
+        assert cgt.edge_features[slot, 0] == np.float32(origin)
+        assert int(cgt.edge_labels[slot]) == 100 + origin
+        expected = np.zeros(len(cgt.color_ids), dtype=np.uint8)
+        for color_id in by_id[edge_id].color_ids:
+            expected[column[int(color_id)]] = 1
+        assert np.array_equal(cgt.edge_colors[slot], expected)
+        assert int(cgt.indices[slot]) == next(
             index
             for index, row in enumerate(cgt.mapping)
-            if row["source_id"] == next(link.target for link in cdbg.links if link.link_id == edge_id)
+            if row["source_id"] == by_id[edge_id].target
         )
+
+
+def test_csr_edge_ids_follow_permuted_links() -> None:
+    """Reversed and shuffled links keep features, labels, and colours on the CFA edge."""
+    count = len(mock_cdbg().links)
+    _assert_permuted_link_payloads(list(reversed(range(count))))
+    _assert_permuted_link_payloads([2, 0, 4, 1, 3])
 
 
 def test_ds_result_uses_the_same_node_lineage() -> None:
