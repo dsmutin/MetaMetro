@@ -91,7 +91,7 @@ A Bifrost `graph.gfa` / `graph.color.bfg` / `graph.bfi` bundle is an allowed bac
 
 ### Compaction rule (schema 1.0)
 
-Repeatedly merge the lexicographically first edge `u → v` such that `u` has out-degree 1, `v` has in-degree 1, `u` is not `v`, and the orientation is `++` or omitted. The surviving sequence is `seq(u) + seq(v)[overlap:]`. For `graph_type: de_bruijn` the overlap is `k - 1`. For any other type it is the edge `overlap` column when that column is set, otherwise metadata `overlap`. The overlapped bases must match; a mismatch raises and the edge is kept. Non-forward orientations are not fused. A graph with no overlap contract keeps identity unitigs (one CFA node each) and keeps its `graph_type`. `gfa_to_cfa` loads a Flye-style repeat graph (`S` segments and `L` links) with `graph_type: repeat` and the CIGAR overlap, and does not invent `k`.
+Repeatedly merge the lexicographically first edge `u → v` such that `u` has out-degree 1, `v` has in-degree 1, `u` is not `v`, and the orientation is `++` or omitted. The surviving sequence is `seq(u) + seq(v)[overlap:]`. For `graph_type: de_bruijn` the overlap is `k - 1`. For any other type it is the edge `overlap` column when that column is set, otherwise metadata `overlap`. Every forward edge with a defined overlap must match; a mismatch raises and no CDBG is written. Non-forward orientations are not fused and their overlap is not checked. A graph with no overlap contract keeps identity unitigs (one CFA node each) and keeps its `graph_type`. `gfa_to_cfa` loads a Flye-style repeat graph (`S` segments and `L` links) with `graph_type: repeat` and the CIGAR overlap, and does not invent `k`.
 
 Unitig colour is the union of member node colours. Per-node colours remain on the mapping, so annotation transfer does not depend on that union. Every original edge is either an internal edge of one unitig or a link. Nothing is dropped.
 
@@ -105,7 +105,7 @@ u000003 → n000006
 
 with 7 CFA edges and 4 links. The bubble fixture does not merge, because every junction has degree other than 1.
 
-`CFA → CDBG → CFA` restores sequences, edge endpoints, edge ids, and colours. Compaction does not copy numeric CFA columns and does not aggregate them. `cdbg_to_cfa` does not write the annotation sidecar back into CFA columns.
+`CFA → CDBG → CFA` restores sequences, edge endpoints, edge ids, and colours. An omitted orientation is written back as `++`. If some restored edges have an overlap and others do not, conversion raises instead of dropping the column. Compaction does not copy numeric CFA columns and does not aggregate them. `cdbg_to_cfa` does not write the annotation sidecar back into CFA columns.
 
 ### Annotation sidecar
 

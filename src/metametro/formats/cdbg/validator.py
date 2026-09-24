@@ -78,6 +78,16 @@ def validate_cdbg(graph: Cdbg) -> None:
             for color_id in link.color_ids:
                 if color_id not in known_colors:
                     errors.append(f"undefined color {color_id} on link {link.link_id}")
+        for row in graph.mapping:
+            for color_id in row.color_ids:
+                if color_id not in known_colors:
+                    errors.append(f"undefined color {color_id} on {row.cfa_node_id}")
+    else:
+        used = [color_id for unitig in graph.unitigs for color_id in unitig.color_ids]
+        used.extend(color_id for link in graph.links for color_id in link.color_ids)
+        used.extend(color_id for row in graph.mapping for color_id in row.color_ids)
+        if used:
+            errors.append("colour ids are set but the colour dictionary is missing")
     link_ids: set[str] = set()
     for link in graph.links:
         if link.link_id in link_ids:
@@ -112,6 +122,16 @@ def validate_cdbg(graph: Cdbg) -> None:
         if row.length <= 0:
             errors.append(f"invalid mapping length for {row.cfa_node_id}")
     for unitig in graph.unitigs:
+        member_colors: set[int] = set()
+        complete = True
+        for node_id in unitig.members:
+            row = by_node.get(node_id)
+            if row is None:
+                complete = False
+                break
+            member_colors.update(row.color_ids)
+        if complete and set(unitig.color_ids) != member_colors:
+            errors.append(f"unitig {unitig.unitig_id} colour is not the union of its CFA members")
         _check_path(graph, unitig, by_node, errors)
     errors.extend(annotation_errors(graph))
     if errors:

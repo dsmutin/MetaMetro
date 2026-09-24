@@ -71,9 +71,8 @@ def cdbg_to_cfa(cdbg: Cdbg) -> CfaGraph:
             edge["overlap"] = str(link.overlap)
         edges.append(edge)
     edges.sort(key=lambda row: row["edge_id"])
-    if edges and not all("overlap" in row for row in edges):
-        for row in edges:
-            row.pop("overlap", None)
+    if edges and any("overlap" in row for row in edges) and not all("overlap" in row for row in edges):
+        raise ContractError(["restored edges do not share one overlap column; refusing to drop it"])
     has_colors = cdbg.colors is not None
     has_overlap = bool(edges) and all("overlap" in row for row in edges)
     graph_type = str(cdbg.metadata.get("graph_type") or "")

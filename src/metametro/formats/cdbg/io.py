@@ -108,12 +108,18 @@ def _read_fasta(path: Path) -> dict[str, str]:
             continue
         if line.startswith(">"):
             if current is not None:
+                if current in sequences:
+                    raise ContractError([f"duplicate unitig_id in unitigs.fna: {current}"])
                 sequences[current] = "".join(chunks).upper()
             current = line[1:].split()[0]
+            if current in sequences:
+                raise ContractError([f"duplicate unitig_id in unitigs.fna: {current}"])
             chunks = []
             continue
         chunks.append(line)
     if current is not None:
+        if current in sequences:
+            raise ContractError([f"duplicate unitig_id in unitigs.fna: {current}"])
         sequences[current] = "".join(chunks).upper()
     return sequences
 

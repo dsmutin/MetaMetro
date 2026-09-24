@@ -6,8 +6,9 @@ contract_version: "1.0"
 mandatory_members:
   - unitigs
   - links
-  - colors
   - mapping
+optional_members:
+  - colors
 unitig_required:
   - unitig_id
   - sequence
