@@ -36,8 +36,10 @@ class Cgt:
 
     @property
     def num_nodes(self) -> int:
+        """Return the number of dense node rows."""
         return int(self.node_features.shape[0])
 
     @property
     def num_edges(self) -> int:
+        """Return the number of CSR adjacency slots."""
         return int(self.indices.shape[0])

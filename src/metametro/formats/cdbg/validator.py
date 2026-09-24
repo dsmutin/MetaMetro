@@ -18,6 +18,8 @@ def _color_dictionary(graph: Cdbg) -> set[int] | None:
         if not token.lstrip("-").isdigit():
             raise ContractError([f"malformed color_id: {token!r}"])
         found.add(int(token))
+    if len(found) != len(graph.colors):
+        raise ContractError(["duplicate color_id"])
     return found
 
 

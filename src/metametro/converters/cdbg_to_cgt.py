@@ -31,7 +31,7 @@ def _as_matrix(
     if isinstance(values, np.ndarray):
         if values.shape[0] != n:
             raise ContractError([f"{width_name} row count must equal {n}"])
-        matrix = np.asarray(values, dtype=np.float32)
+        matrix = np.array(values, dtype=np.float32, copy=True)
         if matrix.ndim == 1:
             matrix = matrix.reshape(n, 1)
         return matrix
@@ -83,7 +83,10 @@ def _as_labels(
     if isinstance(values, np.ndarray):
         if values.shape != (len(keys),):
             raise ContractError(["label vector length must match the object order"])
-        return np.asarray(values, dtype=np.int64)
+        return np.array(values, dtype=np.int64, copy=True)
+    missing = [key for key in keys if key not in values]
+    if missing:
+        raise ContractError([f"missing label for {key}" for key in missing])
     return np.asarray([int(values[key]) for key in keys], dtype=np.int64)
 
 

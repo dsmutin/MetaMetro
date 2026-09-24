@@ -280,3 +280,21 @@ def test_old_cgt_metadata_without_registry_still_loads() -> None:
     del graph.metadata["edge_feature_registry"]
     validate_cgt(graph)
     assert np.array_equal(graph.node_features, original)
+
+
+def test_missing_dict_label_and_colour_values() -> None:
+    cdbg = chain_cdbg()
+    with pytest.raises(ContractError, match="missing label"):
+        cdbg_to_cgt(cdbg, node_labels={"missing": 1})
+    graph = cdbg_to_cgt(cdbg, node_features=np.zeros((len(cdbg.unitigs), 1), dtype=np.float32))
+    caller = np.zeros((len(cdbg.unitigs), 1), dtype=np.float32)
+    copied = cdbg_to_cgt(cdbg, node_features=caller)
+    caller[0, 0] = 9
+    assert copied.node_features[0, 0] == 0
+    graph.node_colors[0, 0] = 2
+    with pytest.raises(ContractError, match="colours must be 0 or 1"):
+        validate_cgt(graph)
+    graph.node_colors[0, 0] = 1
+    graph.metadata["node_feature_names"] = ("only", "extra")
+    with pytest.raises(ContractError, match="node_feature_names"):
+        validate_cgt(graph)

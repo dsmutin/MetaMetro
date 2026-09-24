@@ -155,8 +155,11 @@ def run_ds(
         np.array(cgt.node_features, copy=True),
         None if cgt.node_labels is None else np.array(cgt.node_labels, copy=True),
         np.array(cgt.edge_features, copy=True),
+        None if cgt.edge_labels is None else np.array(cgt.edge_labels, copy=True),
         np.array(cgt.indptr, copy=True),
         np.array(cgt.indices, copy=True),
+        np.array(cgt.node_colors, copy=True),
+        np.array(cgt.edge_colors, copy=True),
     )
     if backend == "numpy":
         predicted, probabilities = train_numpy_gcn(cgt, epochs=epochs, seed=seed)
@@ -172,8 +175,12 @@ def run_ds(
         raise ContractError(["DS mutated CGT node labels"])
     if not np.array_equal(before[2], cgt.edge_features):
         raise ContractError(["DS mutated CGT edge features"])
-    if not np.array_equal(before[3], cgt.indptr) or not np.array_equal(before[4], cgt.indices):
+    if before[3] is not None and not np.array_equal(before[3], cgt.edge_labels):
+        raise ContractError(["DS mutated CGT edge labels"])
+    if not np.array_equal(before[4], cgt.indptr) or not np.array_equal(before[5], cgt.indices):
         raise ContractError(["DS mutated CGT topology"])
+    if not np.array_equal(before[6], cgt.node_colors) or not np.array_equal(before[7], cgt.edge_colors):
+        raise ContractError(["DS mutated CGT colours"])
     model_version = _package_version()
     rows = []
     for row, label, probability in zip(cgt.mapping, predicted, probabilities):

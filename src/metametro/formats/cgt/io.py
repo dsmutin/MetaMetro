@@ -72,7 +72,13 @@ def load_cgt(path: str | Path, *, validate: bool = True) -> Cgt:
     if missing:
         raise ContractError([f"missing required CGT file: {name}" for name in missing])
     metadata: dict[str, Any] = read_yaml(root / "metadata.yaml")
-    _, rows = read_tsv(root / "mapping.tsv")
+    header, rows = read_tsv(root / "mapping.tsv")
+    required_columns = {"dense_id", "source_id", "cfa_node_ids"}
+    missing_columns = sorted(required_columns - set(header))
+    if missing_columns:
+        raise ContractError(
+            [f"missing required CGT mapping column: {column}" for column in missing_columns]
+        )
     mapping = [
         {
             "dense_id": int(row["dense_id"]),

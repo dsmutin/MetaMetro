@@ -14,6 +14,26 @@ def _i64(array: np.ndarray, name: str, errors: list[str]) -> None:
         errors.append(f"wrong dtype for {name}: expected int64, found {array.dtype}")
 
 
+def _name_width(names: object, width: int, label: str, errors: list[str]) -> None:
+    if names is None:
+        return
+    if isinstance(names, (str, bytes)) or not isinstance(names, (list, tuple)):
+        errors.append(f"{label} must be a list")
+        return
+    if len(names) != width:
+        if label == "node_feature_names":
+            errors.append("node_feature_names do not match X_node width")
+        else:
+            errors.append("edge_feature_names do not match X_edge width")
+
+
+def _binary_colours(array: np.ndarray, name: str, errors: list[str]) -> None:
+    if array.ndim != 2 or array.dtype != np.uint8 or array.size == 0:
+        return
+    if int(array.min()) < 0 or int(array.max()) > 1:
+        errors.append(f"{name} colours must be 0 or 1")
+
+
 def validate_cgt(graph: Cgt) -> None:
     """Reject tensors that break schema 1.0 alignment invariants."""
     errors: list[str] = []
@@ -66,17 +86,18 @@ def validate_cgt(graph: Cgt) -> None:
     if graph.node_features.ndim != 2:
         errors.append("node features must be a dense 2-d matrix")
     names = metadata.get("node_feature_names")
-    if isinstance(names, list) and graph.node_features.ndim == 2:
-        if len(names) != graph.node_features.shape[1]:
-            errors.append("node_feature_names do not match X_node width")
+    _name_width(names, graph.node_features.shape[1] if graph.node_features.ndim == 2 else 0, "node_feature_names", errors)
     if graph.edge_features.dtype != np.float32 or graph.edge_features.shape != (e, graph.edge_features.shape[1] if graph.edge_features.ndim == 2 else 0):
         errors.append("wrong dtype or shape for edge features")
     if graph.edge_features.ndim != 2 or graph.edge_features.shape[0] != e:
         errors.append("edge features must align with indices[i]")
     edge_names = metadata.get("edge_feature_names")
-    if isinstance(edge_names, list) and graph.edge_features.ndim == 2:
-        if len(edge_names) != graph.edge_features.shape[1]:
-            errors.append("edge_feature_names do not match X_edge width")
+    _name_width(
+        edge_names,
+        graph.edge_features.shape[1] if graph.edge_features.ndim == 2 else 0,
+        "edge_feature_names",
+        errors,
+    )
     if graph.node_features.ndim == 2:
         validate_feature_registry(
             metadata,
@@ -110,6 +131,10 @@ def validate_cgt(graph: Cgt) -> None:
         errors.append("node and edge colour matrices have different widths")
     if graph.node_colors.ndim == 2 and len(graph.color_ids) != graph.node_colors.shape[1]:
         errors.append("color_ids do not match the colour matrix width")
+    if len(set(graph.color_ids)) != len(graph.color_ids):
+        errors.append("duplicate color_id")
+    _binary_colours(graph.node_colors, "node", errors)
+    _binary_colours(graph.edge_colors, "edge", errors)
     if len(graph.mapping) != n:
         errors.append("invalid mapping: dense_id table length must equal N")
     dense_ids = [row.get("dense_id") for row in graph.mapping]
