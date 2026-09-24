@@ -102,10 +102,16 @@ def validate_edit_application(proposal: EditProposal, before: Cdbg, after: Cdbg)
         errors.append("edit_provenance unitig_parents is missing")
         parents = {}
     before_ids = {unitig.unitig_id for unitig in before.unitigs}
+    after_ids = {unitig.unitig_id for unitig in after.unitigs}
+    for unitig_id in sorted(after_ids - before_ids):
+        if unitig_id not in parents:
+            errors.append(f"new unitig {unitig_id} has no source unitig")
     for unitig_id, sources in parents.items():
         if not isinstance(sources, list) or not sources:
             errors.append(f"unitig {unitig_id} has no source unitig")
             continue
+        if unitig_id not in after_ids:
+            errors.append(f"unitig {unitig_id} is not on the edited graph")
         missing = [source for source in sources if source not in before_ids]
         if missing:
             errors.append(f"unitig {unitig_id} names a source that is not on the parent graph")
@@ -207,6 +213,7 @@ def _proposal_errors(proposal: EditProposal, cdbg: Cdbg) -> list[str]:
                 _claim(consumed_links, link.link_id, edit.edit_id, errors)
     for edit in proposal.edits:
         errors.extend(_target_errors(edit, cdbg, unitigs, links, consumed_unitigs, consumed_links))
+    errors.extend(_apply_time_errors(proposal, cdbg, unitigs))
     return errors
 
 
@@ -244,6 +251,51 @@ def _claim(owner: dict[str, str], key: str, edit_id: str, errors: list[str]) -> 
     if previous is not None and previous != edit_id:
         errors.append(f"contradictory edits {previous} and {edit_id} both use {key}")
     owner[key] = edit_id
+
+
+def _apply_time_errors(proposal: EditProposal, cdbg: Cdbg, unitigs: dict[str, Unitig]) -> list[str]:
+    """Checks that used to run only inside apply, so validate and apply agree."""
+    errors: list[str] = []
+    for edit in proposal.edits:
+        if edit.operation == "remove_edge" and _edge_annotation_targets(cdbg, edit.target):
+            errors.append(f"edit {edit.edit_id} cannot remove a link that has an edge annotation")
+        elif edit.operation == "remove_node" and _node_annotation_targets(cdbg, edit.target):
+            errors.append(f"edit {edit.edit_id} cannot remove a unitig that has a node annotation")
+        elif edit.operation == "add_edge":
+            link_id = _added_link_id(proposal, edit)
+            if any(link.link_id == link_id for link in cdbg.links):
+                errors.append(f"edit {edit.edit_id} link id collides with an existing link")
+        elif edit.operation == "mark_suspicious":
+            namespace = str(edit.parameters.get("namespace", "qc"))
+            feature = str(edit.parameters.get("feature", "suspicious"))
+            target_type = str(edit.parameters.get("target_type", "node"))
+            layer = _find_layer(cdbg, namespace, feature, target_type)
+            if layer is not None and layer.dtype != "int64":
+                errors.append(f"edit {edit.edit_id} incompatible annotation dtype: {layer.dtype}")
+        elif edit.operation in {"change_node_annotation", "change_edge_annotation", "reassign_label"}:
+            target_type = str(edit.parameters.get("target_type", "node" if edit.operation != "change_edge_annotation" else "edge"))
+            if target_type == "internal_node":
+                owner = next((row.unitig_id for row in cdbg.mapping if row.cfa_node_id == edit.target), None)
+                if owner is not None and any(
+                    other.operation in {"split_unitig", "merge_unitigs", "remove_node"}
+                    and (other.target == owner or other.secondary_target == owner)
+                    for other in proposal.edits
+                ):
+                    errors.append(f"contradictory edits use {edit.target}")
+            if target_type == "internal_edge":
+                for other in proposal.edits:
+                    if other.operation != "split_unitig":
+                        continue
+                    unitig = unitigs.get(other.target)
+                    cut = other.parameters.get("cut_after")
+                    if (
+                        unitig is not None
+                        and isinstance(cut, int)
+                        and 0 <= cut < len(unitig.internal_edge_ids)
+                        and unitig.internal_edge_ids[cut] == edit.target
+                    ):
+                        errors.append(f"contradictory edits {other.edit_id} and {edit.edit_id} both use {edit.target}")
+    return errors
 
 
 def _target_errors(
@@ -592,11 +644,8 @@ def _merge_unitigs(cdbg: Cdbg, proposal: EditProposal, edit: GraphEdit) -> None:
         [list(colors) for colors in left.internal_edge_colors]
         + [list(link.color_ids)]
         + [list(colors) for colors in right.internal_edge_colors],
-        list(left.internal_overlaps) + [overlap] + list(right.internal_overlaps),
+        junction_overlaps(left, cdbg.k) + [overlap] + junction_overlaps(right, cdbg.k),
     )
-    if not left.internal_overlaps and str(cdbg.metadata.get("graph_type")) == "de_bruijn":
-        fill = cdbg.k - 1 if isinstance(cdbg.k, int) else overlap
-        merged.internal_overlaps = [fill] * (len(left.members) - 1) + [overlap] + [fill] * (len(right.members) - 1)
     cdbg.unitigs = [
         item for item in cdbg.unitigs if item.unitig_id not in {left.unitig_id, right.unitig_id}
     ] + [merged]

@@ -11,6 +11,7 @@ from metametro.edits import EditProposal, GraphEdit, apply_edit_proposal, valida
 from metametro.errors import ContractError
 from metametro.fixtures import chain_cdbg
 from metametro.formats.cdbg import annotate_cdbg
+from metametro.formats.cdbg import annotate_cdbg
 from metametro.identity import cgt_edge_cfa_ids, node_lineage
 
 pytestmark = pytest.mark.mandatory
@@ -292,6 +293,40 @@ def test_cfa_cdbg_cgt_proposal_round_trip_keeps_edge_alignment() -> None:
     assert lineage.cfa_node_ids
     assert before.num_nodes == 3
     assert _signature(cdbg)["unitigs"] == _signature(chain_cdbg())["unitigs"]
+
+
+def test_annotated_remove_is_rejected_before_apply() -> None:
+    cdbg = chain_cdbg()
+    unitig = cdbg.unitigs[0]
+    link_id = next(
+        link.link_id
+        for link in cdbg.links
+        if link.source == unitig.unitig_id or link.target == unitig.unitig_id
+    )
+    annotate_cdbg(
+        cdbg,
+        namespace="sample",
+        feature="coverage",
+        target_type="node",
+        values={unitig.unitig_id: 1.0},
+        dtype="float64",
+        provenance=_provenance(cdbg),
+    )
+    with pytest.raises(ContractError, match="node annotation"):
+        validate_edit_proposal(_proposal(_edit("d", "remove_node", unitig.unitig_id)), cdbg)
+    annotate_cdbg(
+        cdbg,
+        namespace="sample",
+        feature="support",
+        target_type="edge",
+        values={link_id: 1.0},
+        dtype="float64",
+        provenance=_provenance(cdbg),
+    )
+    before = _signature(cdbg)
+    with pytest.raises(ContractError, match="edge annotation"):
+        validate_edit_proposal(_proposal(_edit("e", "remove_edge", link_id)), cdbg)
+    assert _signature(cdbg) == before
 
 
 def _csr_links(cdbg):

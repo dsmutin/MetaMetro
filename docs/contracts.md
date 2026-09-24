@@ -123,7 +123,7 @@ Breaking: results that cannot be joined back to `dense_id` or CFA id, or removin
 
 ## Edit proposals
 
-An edit proposal is not one of the seven contracts and not a graph format. `validate_edit_proposal` and `apply_edit_proposal` read a CDBG and, when the proposal is valid, return a new CDBG. The input is not modified. New unitig ids record their parent unitig ids and are not biological names. CFA node ids on the surviving members stay the original ids. Schema 1.0 and the contract versions stay 1.0 because `edit_provenance` is optional metadata. A directory that lacks it still loads.
+An edit proposal is not one of the seven contracts and not a graph format. `validate_edit_proposal` checks a proposal and returns nothing. `apply_edit_proposal` returns a new CDBG when the proposal is valid. The input is not modified. A check that would make apply fail is also a validation error. New unitig ids record their parent unitig ids and are not biological names. CFA node ids on the surviving members stay the original ids. Schema 1.0 and the contract versions stay 1.0 because `edit_provenance` is optional metadata. A directory that lacks it still loads.
 
 ## Breaking-change rule
 
