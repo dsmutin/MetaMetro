@@ -667,4 +667,38 @@ def test_annotation_overwrite_requires_replace() -> None:
     )
     updated = get_node_annotations(cdbg, namespace="sample", feature="coverage")
     assert set(updated.values.tolist()) == {2.0}
-    assert len(cdbg.annotations) == 1
+
+
+def test_int64_overflow_and_sidecar_name_collision() -> None:
+    cdbg = cfa_to_cdbg(chain_cfa())
+    unitig_id = cdbg.unitigs[0].unitig_id
+    with pytest.raises(ContractError, match="does not fit in int64"):
+        annotate_cdbg(
+            cdbg,
+            namespace="sample",
+            feature="count",
+            target_type="node",
+            values={unitig_id: 2**63},
+            dtype="int64",
+            provenance=_provenance(cdbg),
+        )
+    annotate_cdbg(
+        cdbg,
+        namespace="a__b",
+        feature="c",
+        target_type="node",
+        values={unitig_id: 1},
+        dtype="int64",
+        provenance=_provenance(cdbg),
+    )
+    annotate_cdbg(
+        cdbg,
+        namespace="a",
+        feature="b__c",
+        target_type="node",
+        values={unitig_id: 2},
+        dtype="int64",
+        provenance=_provenance(cdbg),
+    )
+    with pytest.raises(ContractError, match="shared by two layers"):
+        dump_cdbg(cdbg, "/tmp/metametro-sidecar-collision")

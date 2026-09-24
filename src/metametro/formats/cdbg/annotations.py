@@ -131,7 +131,8 @@ def annotate_cdbg(
         raise ContractError(["incompatible annotation dtype: category vectors are not supported"])
     record = _parse_provenance(provenance, cdbg)
     target_ids, array = _coerce_values(values, dtype=dtype, kind=kind)
-    missing = [target_id for target_id in target_ids.tolist() if target_id not in _known_targets(cdbg, target_type)]
+    known = _known_targets(cdbg, target_type)
+    missing = [target_id for target_id in target_ids.tolist() if target_id not in known]
     if missing:
         raise ContractError([f"missing annotation target: {target_id}" for target_id in missing])
     layer = AnnotationLayer(
@@ -198,14 +199,14 @@ def transfer_annotations(
     Node columns become ``internal_node`` rows keyed by the CFA node id.
     An edge column becomes an ``internal_edge`` row when compaction absorbed
     that edge, and an ``edge`` row when the edge is still a CDBG link.
-    ``link_cfa_edge_id`` and ``internal_cfa_edge_ids`` make that split.
+    The split uses ``unitig.internal_edge_ids`` and ``link.link_id``. Those
+    ids are the CFA edge ids.
     Colour sets and orientations are not copied. A blank cell raises
     ``ContractError``. The function returns the same ``cdbg`` object and
     does not edit unitigs, links, or the mapping.
     """
     from metametro.formats.cdbg.validator import validate_cdbg
     from metametro.formats.cfa.validator import validate_cfa
-    from metametro.identity import internal_cfa_edge_ids, link_cfa_edge_id
 
     validate_cdbg(cdbg)
     _require_flag(replace, "replace")
@@ -220,11 +221,11 @@ def transfer_annotations(
         raise ContractError(["CFA nodes do not match the CDBG mapping"])
     internal: dict[str, str] = {}
     for unitig in cdbg.unitigs:
-        for edge_id in internal_cfa_edge_ids(cdbg, unitig.unitig_id):
+        for edge_id in unitig.internal_edge_ids:
             if edge_id in internal:
                 raise ContractError([f"duplicate edge id {edge_id}"])
             internal[edge_id] = unitig.unitig_id
-    links = {link_cfa_edge_id(cdbg, link.link_id) for link in cdbg.links}
+    links = {link.link_id for link in cdbg.links}
     overlap = set(internal) & links
     if overlap:
         raise ContractError([f"CFA edge {edge_id} is both a link and an internal edge" for edge_id in sorted(overlap)])
@@ -300,7 +301,6 @@ def aggregate_annotations(
     returns the same ``cdbg`` object.
     """
     from metametro.formats.cdbg.validator import validate_cdbg
-    from metametro.identity import internal_cfa_edge_ids
 
     validate_cdbg(cdbg)
     _require_flag(replace, "replace")
@@ -325,7 +325,7 @@ def aggregate_annotations(
             _with_policy(layer, policy=policy, provenance=_with_aggregation_parameters(record, policy, layer, weights=None, used=None)),
         )
         return cdbg
-    groups = _groups(cdbg, source_target_type, internal_cfa_edge_ids)
+    groups = _groups(cdbg, source_target_type)
     if not groups:
         raise ContractError(["no annotation targets to aggregate"])
     lookup = _value_index(layer)
@@ -459,8 +459,14 @@ def dump_annotations(graph: Cdbg, root: Path) -> None:
         shutil.rmtree(directory)
     directory.mkdir(parents=True)
     manifest: list[dict[str, Any]] = []
+    stems: set[str] = set()
     for layer in layers:
         stem = _stem(layer.namespace, layer.feature, layer.target_type)
+        if stem in stems:
+            raise ContractError(
+                [f"annotation file name {stem} is shared by two layers; namespace and feature must not contain '__'"]
+            )
+        stems.add(stem)
         entry: dict[str, Any] = {
             "namespace": layer.namespace,
             "feature": layer.feature,
@@ -795,7 +801,10 @@ def _as_int(value: Any, target_id: str) -> int:
     if isinstance(value, (bool, np.bool_)) or isinstance(value, (str, bytes, float, np.floating, list, tuple, np.ndarray)):
         raise ContractError([f"incompatible annotation dtype for {target_id}"])
     if isinstance(value, (int, np.integer)):
-        return int(value)
+        number = int(value)
+        if number < -2**63 or number > 2**63 - 1:
+            raise ContractError([f"incompatible annotation dtype for {target_id}: value does not fit in int64"])
+        return number
     raise ContractError([f"incompatible annotation dtype for {target_id}"])
 
 
@@ -1011,15 +1020,14 @@ def _parse_int_cell(cell: str, target_id: str) -> int:
     raise ContractError([f"incompatible annotation dtype for {target_id}"])
 
 
-def _groups(cdbg: Cdbg, source_target_type: str, internal_cfa_edge_ids: Any) -> list[tuple[str, list[str]]]:
+def _groups(cdbg: Cdbg, source_target_type: str) -> list[tuple[str, list[str]]]:
     groups: list[tuple[str, list[str]]] = []
     for unitig in cdbg.unitigs:
         if source_target_type == "internal_node":
             groups.append((unitig.unitig_id, list(unitig.members)))
             continue
-        members = list(internal_cfa_edge_ids(cdbg, unitig.unitig_id))
-        if members:
-            groups.append((unitig.unitig_id, members))
+        if unitig.internal_edge_ids:
+            groups.append((unitig.unitig_id, list(unitig.internal_edge_ids)))
     return groups
 
 
