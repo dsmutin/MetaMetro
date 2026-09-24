@@ -14,6 +14,13 @@ def _version() -> str:
 __version__ = _version()
 
 from metametro.contracts import CONTRACTS, run_ds
+from metametro.edits import (
+    EditProposal,
+    GraphEdit,
+    apply_edit_proposal,
+    validate_edit_application,
+    validate_edit_proposal,
+)
 from metametro.converters import cdbg_to_cfa, cdbg_to_cgt, cfa_to_cdbg, edge_index_array, to_pyg
 from metametro.fixtures import chain_cfa, chain_cdbg, mock_cdbg, mock_cfa, mock_cgt
 from metametro.identity import (
@@ -47,6 +54,9 @@ from metametro.formats.cgt import (
 
 __all__ = [
     "CONTRACTS",
+    "EditProposal",
+    "GraphEdit",
+    "apply_edit_proposal",
     "aggregate_annotations",
     "annotate_cdbg",
     "assert_cgt_matches_cdbg",
@@ -80,6 +90,8 @@ __all__ = [
     "to_pyg",
     "transfer_annotations",
     "validate_cdbg",
+    "validate_edit_application",
+    "validate_edit_proposal",
     "validate_cfa",
     "validate_cgt",
 ]

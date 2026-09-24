@@ -180,6 +180,16 @@ CSR stays canonical because every feature, label, and colour row is defined on a
 
 On-disk arrays are NumPy `.npy` files. That choice is not part of the logical contract. Predictions are not files in the CGT directory.
 
+## Edit proposals
+
+An edit proposal is not a fourth graph format. A model that reads a CGT builds an `EditProposal` and does not write the CDBG or the CFA. `apply_edit_proposal` returns a new CDBG. The input object stays as it was. An invalid proposal raises `ContractError` and returns nothing.
+
+Each edit names a CDBG unitig id or link id. A split is allowed only between CFA members. The two new unitig ids record the parent unitig id; they are not biological ids, and the CFA node ids on each side stay the original ids. The boundary CFA edge becomes a link and keeps that edge id. A merge is allowed only when one forward link joins the two unitigs, that link is the upstream unitig's only outgoing link and the downstream unitig's only incoming link, and the overlap bases match. The merged unitig records both parent unitig ids. The absorbed link becomes an internal edge and keeps its CFA edge id.
+
+`add_edge` creates a link id that has no CFA parent. `remove_node` is rejected unless the same proposal removes every link that touched that unitig. Annotation edits use the sidecar. They do not change unitigs, links, sequences, or the mapping. `reassign_label` changes an existing category layer. `mark_suspicious` writes an int64 flag because the sidecar has no boolean dtype.
+
+The new graph's `graph_id` differs from the parent. `metadata.edit_provenance` stores the parent graph id, the proposal id, the edit ids, `unitig_parents`, and `link_parents`. Schema version stays 1.0. A CDBG directory without `edit_provenance` still loads.
+
 ## PyG adapter
 
 `cgt_to_pyg.to_pyg` builds `torch_geometric.data.Data(x, edge_index, edge_attr, y)` from the CGT. `edge_index` has shape `(2, E)` and the same column order as CSR. The CGT remains the canonical object. `edge_index_array` exposes that layout without importing PyTorch Geometric.

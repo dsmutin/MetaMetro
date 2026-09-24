@@ -121,6 +121,10 @@ The mock check is: prediction count equals node count, and each prediction still
 
 Breaking: results that cannot be joined back to `dense_id` or CFA id, or removing `predicted_label` or `probability`. Adding prediction fields is non-breaking. A different model is non-breaking.
 
+## Edit proposals
+
+An edit proposal is not one of the seven contracts and not a graph format. `validate_edit_proposal` and `apply_edit_proposal` read a CDBG and, when the proposal is valid, return a new CDBG. The input is not modified. New unitig ids record their parent unitig ids and are not biological names. CFA node ids on the surviving members stay the original ids. Schema 1.0 and the contract versions stay 1.0 because `edit_provenance` is optional metadata. A directory that lacks it still loads.
+
 ## Breaking-change rule
 
 Non-breaking additions: optional metadata, optional features, annotation namespaces, and new backends that honour the same contract version.

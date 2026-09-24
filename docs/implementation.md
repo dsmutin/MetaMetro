@@ -25,6 +25,7 @@ csc = csc_from_cgt(cgt)          # incoming index; does not reorder X_edge
 graph = cgt_to_pyg(cgt)          # requires torch_geometric
 result = run_ds(cgt, seed=0)     # does not modify cgt
 predictions = predictions_from_ds(result)  # node predictions; confidence is the softmax probability
+edited = apply_edit_proposal(proposal, cdbg)  # new CDBG; cdbg is not modified
 edge = edge_prediction(cgt, csr_slot, predicted_class=..., probability=..., confidence=..., model_id=..., model_version=..., cdbg=cdbg)
 ```
 
@@ -51,6 +52,7 @@ Schema files live next to each format (`formats/*/schema.yaml`) and pin schema 1
 - Training labels are not copied into `X_node` or `X_edge`. Predictions and confidence stay off those arrays.
 - The PyG adapter does not become a fourth on-disk format.
 - The NumPy trainer is the tested Contract 7 implementation. PyG is an optional backend, not a second result schema.
+- Edit proposals do not mutate the input CDBG or CFA, do not bisect a CFA node, and do not invent a biological id for a new unitig. There is no correction model.
 
 ## Tests
 
