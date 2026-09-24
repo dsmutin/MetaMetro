@@ -188,6 +188,18 @@ def test_gfa_repeat_graph_compacts(tmp_path) -> None:
     assert compacted.unitigs[0].sequence == "ACGTAACCCGGG"
 
 
+def test_duplicate_fasta_and_undefined_mapping_colour(tmp_path) -> None:
+    graph = chain_cdbg()
+    dump_cdbg(graph, tmp_path)
+    fasta = (tmp_path / "unitigs.fna").read_text(encoding="utf-8")
+    (tmp_path / "unitigs.fna").write_text(fasta + ">u000001\nTTTTTT\n", encoding="utf-8")
+    with pytest.raises(ContractError, match="duplicate unitig_id"):
+        load_cdbg(tmp_path)
+    graph.mapping[0].color_ids = [99]
+    with pytest.raises(ContractError, match="undefined color 99"):
+        validate_cdbg(graph)
+
+
 def test_read_colouring_follows_k_not_graph_type() -> None:
     """Read colouring accepts a non-de Bruijn graph that declares k."""
     from metametro.contracts.colouring import colour_by_reads
@@ -199,3 +211,21 @@ def test_read_colouring_follows_k_not_graph_type() -> None:
     graph.metadata.pop("k")
     with pytest.raises(ContractError, match="integer k"):
         colour_by_reads(graph, [], ["s0"])
+
+
+def test_short_read_colours_kmer_node() -> None:
+    """A read shorter than k colours a node when it occurs inside that node."""
+    from metametro.contracts.colouring import colour_by_reads
+    from metametro.formats.cfa.model import CfaGraph
+
+    graph = CfaGraph(
+        metadata={"schema_version": "1.0", "graph_id": "short", "graph_type": "de_bruijn", "k": 3},
+        sequences={"n1": "ACG", "n2": "CGT"},
+        nodes=[{"node_id": "n1"}, {"node_id": "n2"}],
+        edges=[],
+        node_header=["node_id"],
+        edge_header=["edge_id", "source", "target"],
+    )
+    coloured = colour_by_reads(graph, [("r", "s0", "AC")], ["s0"])
+    assert coloured.nodes[0]["color_set"] == "0"
+    assert coloured.nodes[1]["color_set"] == "0"

@@ -64,9 +64,6 @@ def colour_cfa(
     unknown_targets = [name for name in target if name not in {"node", "edge"}]
     if unknown_targets:
         raise ContractError([f"unknown colour target: {', '.join(unknown_targets)}"])
-    already = any(_existing(row) for row in cfa.nodes + cfa.edges)
-    if already and operation is None:
-        raise ContractError(["colour_operation is required when the CFA is already coloured"])
     nodes = [dict(row) for row in cfa.nodes]
     edges = [dict(row) for row in cfa.edges]
     if "node" in target and node_colors is not None:
@@ -134,7 +131,7 @@ def _junction(cfa: CfaGraph, row: dict[str, str], k: int) -> str:
     """Junction (k+1)-mer. A '-' endpoint uses the reverse complement."""
     orientation = row.get("orientation") or "++"
     if orientation not in {"++", "+-", "-+", "--"}:
-        orientation = "++"
+        raise ContractError([f"edge {row.get('edge_id', '')} has orientation {orientation!r}"])
     source = _oriented_sequence(cfa.sequences[row["source"]], orientation[0])
     target = _oriented_sequence(cfa.sequences[row["target"]], orientation[1])
     if len(source) < k or len(target) < k:
@@ -155,10 +152,14 @@ def _colour_kmers(cfa, by_sample, samples, sample_index, k, min_vertex_depth, mi
     """Same depth and density rules, scanned once per read."""
     present: dict[str, dict[str, int]] = {sample: {} for sample in samples}
     density: dict[str, dict[str, int]] = {sample: {} for sample in samples}
+    short_reads: dict[str, list[str]] = {}
     for sample, sample_reads in by_sample.items():
         seen_counts: dict[str, int] = {}
         junction_counts: dict[str, int] = {}
         for read in sample_reads:
+            if 0 < len(read) < k:
+                short_reads.setdefault(sample, []).append(read)
+                continue
             if len(read) >= k:
                 seen: set[str] = set()
                 for index in range(len(read) - k + 1):
@@ -179,7 +180,9 @@ def _colour_kmers(cfa, by_sample, samples, sample_index, k, min_vertex_depth, mi
         node_assignment[row["node_id"]] = [
             sample_index[sample]
             for sample in samples
-            if present[sample].get(sequence, 0) >= min_vertex_depth
+            if present[sample].get(sequence, 0)
+            + sum(_read_covers(read, sequence) for read in short_reads.get(sample, []))
+            >= min_vertex_depth
         ]
     edge_assignment = {}
     for row in cfa.edges:
@@ -203,6 +206,7 @@ def _read_covers(read: str, sequence: str) -> bool:
 
 
 def _colour_general(cfa, by_sample, samples, sample_index, k, min_vertex_depth, min_edge_kmer_density):
+    """Depth and density rules when node length is not exactly k."""
     node_assignment: dict[str, list[int]] = {}
     for row in cfa.nodes:
         node_id = row["node_id"]
