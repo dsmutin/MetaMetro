@@ -184,6 +184,13 @@ def test_community_contract_is_stable_and_renamed(tmp_path: Path) -> None:
     assert phage.spec.total_reads == 4000
 
 
+def test_roxel_execute_needs_rscript(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Roxel does not invent a street graph when R is absent."""
+    monkeypatch.setattr("metametro.bench.data.universal.catalog.shutil.which", lambda _name: None)
+    with pytest.raises(ContractError, match="Rscript"):
+        build("roxel", outdir=tmp_path / "roxel", execute=True)
+
+
 def test_community_execute_stops_without_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A community build does not invent a graph when the assembler is absent."""
     monkeypatch.setattr("metametro.bench.data.universal.catalog.shutil.which", lambda _name: None)

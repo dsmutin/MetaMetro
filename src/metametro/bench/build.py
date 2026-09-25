@@ -281,8 +281,57 @@ def _external(
             colourings=made.colourings,
             status="built",
         )
-    if spec.name == "spb_ground_transit" and (gtfs is None or not Path(gtfs).is_file()):
-        raise ContractError(["spb_ground_transit needs an existing GTFS zip passed as --gtfs"])
     if spec.name == "roxel":
         require_programs(spec, ("Rscript",))
-    raise ContractError([f"{spec.name} contract is written; the external graph build did not run"])
+        from metametro.bench.data.universal.roxel import build_roxel_cfa
+
+        graph = build_roxel_cfa(k=spec.k or 21)
+        ctx = BuildContext(selected=colourings)
+        made = materialize(graph, destination, ctx)
+        _finish_manifest(
+            spec,
+            destination,
+            status="built",
+            identity=made.identity,
+            colourings=made.colourings,
+            requested=requested,
+        )
+        return BuildResult(
+            spec=spec,
+            outdir=destination,
+            identity=made.identity,
+            colourings=made.colourings,
+            status="built",
+        )
+    if spec.name == "spb_ground_transit":
+        if gtfs is None or not Path(gtfs).is_file():
+            raise ContractError(["spb_ground_transit needs an existing GTFS zip passed as --gtfs"])
+        script = repo_root() / "examples" / "spb_transit" / "build_cfa.py"
+        staged = destination / "cfa_source"
+        completed = subprocess.run(
+            [sys.executable, str(script), "--gtfs", str(gtfs), "--out", str(staged), "--k", "21"],
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise ContractError([f"GTFS CFA build exited {completed.returncode}"])
+        from metametro.formats.cfa.io import load_cfa
+
+        graph = load_cfa(staged)
+        ctx = BuildContext(selected=colourings)
+        made = materialize(graph, destination, ctx)
+        _finish_manifest(
+            spec,
+            destination,
+            status="built",
+            identity=made.identity,
+            colourings=made.colourings,
+            requested=requested,
+        )
+        return BuildResult(
+            spec=spec,
+            outdir=destination,
+            identity=made.identity,
+            colourings=made.colourings,
+            status="built",
+        )
+    raise ContractError([f"no executor for {spec.name}"])
