@@ -117,6 +117,15 @@ def pin_dir(name: str) -> Path:
     return path
 
 
+def classifier_pin(spec: BenchSpec) -> Path:
+    """Return the pin whose ``db`` rows form the Kraken2 and Kaiju library.
+
+    A half community uses the parent pin so the database is the full
+    non-synonymous set. The metagenome and the graph stay the half set.
+    """
+    return pin_dir(spec.parent or spec.name)
+
+
 def write_community_contract(spec: BenchSpec, outdir: Path) -> None:
     """Copy the accession pin and write the lognormal abundance table."""
     rows = load_pairs(pin_dir(spec.name) / "accessions.tsv")

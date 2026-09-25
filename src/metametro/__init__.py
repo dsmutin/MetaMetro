@@ -13,7 +13,17 @@ def _version() -> str:
 
 __version__ = _version()
 
-from metametro.contracts import CONTRACTS, run_ds
+from metametro.contracts import (
+    CONTRACTS,
+    colour_by_composition,
+    colour_by_reads,
+    colour_cfa,
+    colour_decaying,
+    filter_colours,
+    kmeans_onehot,
+    paint_namespace,
+    run_ds,
+)
 from metametro.edits import (
     EditProposal,
     GraphEdit,
@@ -74,9 +84,14 @@ __all__ = [
     "dump_cgt",
     "edge_index_array",
     "edge_prediction",
+    "colour_by_composition",
+    "colour_by_reads",
+    "colour_cfa",
+    "colour_decaying",
+    "filter_colours",
     "get_edge_annotations",
     "get_node_annotations",
-    "internal_cfa_edge_ids",
+    "kmeans_onehot",
     "link_cfa_edge_id",
     "load_cdbg",
     "load_cfa",
@@ -84,6 +99,7 @@ __all__ = [
     "mock_cdbg",
     "mock_cfa",
     "mock_cgt",
+    "paint_namespace",
     "node_lineage",
     "predictions_from_ds",
     "resolve_sequence",

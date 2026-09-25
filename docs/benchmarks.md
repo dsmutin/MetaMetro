@@ -31,7 +31,29 @@ That tree is gitignored. A build writes:
 | `manifest.yaml` | Bench name, colourings, identity |
 | `identity.sha256` | Digest of sequences, topology, and colour sets |
 
-Every colouring registered in `metametro.bench.colourings` that can run is applied, including a colouring added after the benchmark was introduced. `--colouring` restricts that set. `as_built` keeps colours already on the graph. `read_depth` colours nodes by read depth and edges by junction density when the build has reads and an integer `k`.
+Every colouring registered in `metametro.bench.colourings` that can run is applied, including a colouring added after the benchmark was introduced. `--colouring` restricts that set. `metametro benchbuild --list-colourings` prints the registry.
+
+| Colouring | Namespace | Auto | When it runs |
+| --- | --- | --- | --- |
+| `as_built` | existing (taxon, sample, route, …) | yes | always; keeps colours already on the graph |
+| `read_depth` | `sample` | yes | reads and integer `k` are on the build |
+| `composition_kmeans` | `composition` | yes | at least two sequenced nodes |
+| `kraken2` | `kraken2` | yes | Kraken2 output or `kraken2` plus a database |
+| `kaiju` | `kaiju` | yes | Kaiju output or `kaiju` plus an FM-index |
+| `decaying` | `decaying` | yes | the graph already has colours and edges |
+| `read_accession` | `accession` | no | named with `--colouring`; ISS-style read ids. Simulated accessions leak truth, so this is not auto |
+
+A half community (`*_half`) still simulates the half metagenome. Its Kraken2 and Kaiju library is the parent pin's full `db` set (the non-synonymous partners), not the half set.
+
+Downstream tools do not recolour. They load the ToCUMG and name namespaces:
+
+```python
+from metametro.bench import load_bench_cdbg, namespaces_for
+
+graph = load_bench_cdbg(bench_dir, namespaces=namespaces_for(("kraken2", "decaying")))
+```
+
+`filter_colours(graph, namespace="kraken2")` is the same selection on a CFA, CDBG, or (by `color_ids`) a CGT.
 
 A column or colour namespace that carries an evaluation target (`truth_taxon_id`, `expected_action`, `genome_abundance`, a `truth` namespace) is rejected. Those values stay under `ground_truth/`.
 

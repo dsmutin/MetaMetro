@@ -18,6 +18,7 @@ alwaysApply: true
 - no-push
 - follow-contributing
 - benchmarks
+- colourings
 
 User-level publication-figures applies when producing plots.
 

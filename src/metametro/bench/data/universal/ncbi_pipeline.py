@@ -530,8 +530,9 @@ def _build_kaiju_from_pinned_fasta(log_path: Path) -> None:
             accession, _name, tax_id = _report_identity(json.loads(line))
             identities[accession] = tax_id
     db_path = WORK / "kaiju_db"
-    fastas = sorted((WORK / "db").glob("*.fna"))
-    n_db = sum(1 for row in load_pairs(EXAMPLE / "accessions.tsv") if row["role"] == "db")
+    library = _classifier_library()
+    fastas = sorted(library.glob("*.fna"))
+    n_db = sum(1 for row in load_pairs(_classifier_pin()) if row["role"] == "db")
     if len(fastas) != n_db:
         raise SystemExit(f"expected {n_db} database FASTA files, found {len(fastas)}")
     if db_path.exists():
@@ -548,12 +549,34 @@ def _build_kaiju_from_pinned_fasta(log_path: Path) -> None:
     build_database_kaiju(db_path=str(db_path), threads=4, protein=False)
 
 
+def _classifier_library() -> Path:
+    """FASTA used to build Kraken2 and Kaiju indexes.
+
+    ``work/classifier_db`` is the full parent ``db`` set on half communities.
+    ``work/db`` is the layout copy of the pin that was simulated.
+    """
+    library = WORK / "classifier_db"
+    if library.is_dir() and any(library.glob("*.fna")):
+        return library
+    return WORK / "db"
+
+
+def _classifier_pin() -> Path:
+    """Accession table whose ``db`` rows must match the classifier library."""
+    from metametro.bench.data.universal.catalog import pin_dir
+    from metametro.bench.registry import resolve
+
+    spec = resolve(GRAPH_ID)
+    return pin_dir(spec.parent or spec.name)
+
+
 def stage_databases() -> None:
-    """Build Kraken2 and Kaiju indexes with samovar build --no-example-omit."""
+    """Build Kraken2 and Kaiju indexes from the classifier library FASTA."""
     samovar = _tool("samovar")
     log_path = WORK / "commands.log"
+    library = _classifier_library()
     config = {
-        "input_dir": [str(WORK / "db")],
+        "input_dir": [str(library)],
         "output_dir": str(WORK / "db_preprocessed"),
         "mutation_rate": 0,
         "include_percent": 100,

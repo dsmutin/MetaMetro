@@ -10,6 +10,7 @@ from pathlib import Path
 
 from metametro.bench.colourings import BuildContext
 from metametro.bench.data.universal.catalog import (
+    classifier_pin,
     require_programs,
     write_community_contract,
     write_external_contract,
@@ -183,7 +184,7 @@ def _community(
         )
     require_programs(spec, ("datasets", "samovar", "megahit", "megahit_toolkit"))
     graph = _assemble_community(spec, destination)
-    ctx = BuildContext(selected=colourings)
+    ctx = _community_context(spec, destination, colourings)
     made = materialize(graph, destination, ctx)
     _finish_manifest(
         spec,
@@ -229,7 +230,66 @@ def _assemble_community(spec: BenchSpec, destination: Path):
     if chosen is None:
         raise ContractError([f"{spec.name} has no MEGAHIT k-mer contig graph"])
     k_value = int(Path(chosen).name.split(".", 1)[0][1:])
+    _install_classifier_library(spec, destination, root)
+    _try_classifier_indexes(destination)
     return fastg_to_cfa(fastg, k=k_value, graph_id=spec.name)
+
+
+def _install_classifier_library(spec: BenchSpec, destination: Path, root: Path) -> None:
+    """Copy the full non-synonymous ``db`` FASTA set used to build classifiers."""
+    rows = load_pairs(classifier_pin(spec) / "accessions.tsv")
+    library = destination / "work" / "classifier_db"
+    library.mkdir(parents=True, exist_ok=True)
+    missing = []
+    for row in rows:
+        if row["role"] != "db":
+            continue
+        source = root / "data" / "raw" / "fasta" / f"{row['accession']}.fna"
+        if not source.is_file() or source.stat().st_size == 0:
+            missing.append(row["accession"])
+            continue
+        target = library / source.name
+        if not target.is_file():
+            shutil.copyfile(source, target)
+    if missing:
+        shown = ", ".join(missing[:8])
+        if len(missing) > 8:
+            shown += ", ..."
+        raise ContractError([f"{spec.name} classifier library missing FASTA: {shown}"])
+
+
+def _try_classifier_indexes(destination: Path) -> None:
+    """Build Kraken2 and Kaiju indexes when those tools can run. Skip if they cannot."""
+    from metametro.bench.data.universal import ncbi_pipeline as pipe
+
+    kraken = shutil.which("kraken2")
+    kaiju = shutil.which("kaiju")
+    samovar = shutil.which("samovar")
+    if kraken is None and kaiju is None:
+        return
+    if samovar is None:
+        return
+    try:
+        pipe.stage_databases()
+    except SystemExit:
+        return
+
+
+def _community_context(spec: BenchSpec, destination: Path, colourings: tuple[str, ...] | None) -> BuildContext:
+    """Point colourings at classifier databases built from the full ``db`` set."""
+    work = destination / "work"
+    kraken_db = work / "kraken_db"
+    kaiju_db = work / "kaiju_db"
+    kraken_out = work / "classifier" / "contigs.kraken"
+    kaiju_out = work / "classifier" / "contigs.kaiju"
+    return BuildContext(
+        selected=colourings,
+        work_dir=work,
+        kraken_db=kraken_db if (kraken_db / "hash.k2d").is_file() else None,
+        kaiju_db=kaiju_db if kaiju_db.is_dir() else None,
+        kraken_output=kraken_out if kraken_out.is_file() else None,
+        kaiju_output=kaiju_out if kaiju_out.is_file() else None,
+    )
 
 
 def _require_parent_fasta(spec: BenchSpec, root: Path) -> None:

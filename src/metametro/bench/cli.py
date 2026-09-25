@@ -19,6 +19,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--all", action="store_true", help="build every registered benchmark")
     parser.add_argument("--list", action="store_true", help="list benchmarks and exit")
     parser.add_argument(
+        "--list-colourings",
+        action="store_true",
+        help="list registered colourings and exit",
+    )
+    parser.add_argument(
         "--execute",
         action="store_true",
         help="with --all, also download and assemble community and external benchmarks",
@@ -37,6 +42,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--gtfs", type=Path, default=None, help="GTFS zip for spb_ground_transit")
     args = parser.parse_args(argv)
+    if args.list_colourings:
+        from metametro.bench.colourings import listed_colourings
+
+        for name, namespace, auto in listed_colourings():
+            flag = "auto" if auto else "explicit"
+            print(f"{name}\t{namespace or '-'}\t{flag}")
+        return 0
     if args.all and args.name:
         parser.error("--all does not take a benchmark name")
     if args.all and args.outdir is not None:

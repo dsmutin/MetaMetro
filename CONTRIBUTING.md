@@ -82,6 +82,22 @@ Do not copy an evaluation target into graph features, colours, or any file a mod
 
 See [docs/benchmarks.md](docs/benchmarks.md).
 
+## Colourings
+
+New colouring methods belong in this repository, under `src/metametro/bench/colourings.py` and `src/metametro/contracts/`, and are reviewed as a pull request. Downstream tools (BubbleBlower, metaMalevich, ParaGVAE) do not add a second colouring implementation.
+
+Do not mock a colouring. A tiny graph that exists only inside a test may stay in that test. A classifier colouring is applied from a real Kraken2 or Kaiju output, or from a fixture that is that tool's file format, not from invented taxon masks.
+
+A new colouring must declare when it is available, which colour namespace it writes, and whether it auto-applies. `benchbuild` applies every auto colouring that can run. Check that the new namespace does not collide with an existing one and that `filter_colours` / `load_bench_cdbg(..., namespaces=...)` can select it. Simulated taxon ids stay out of colours.
+
+Downstream tools select layers from the ToCUMG:
+
+```python
+from metametro.bench import load_bench_cdbg, namespaces_for
+
+graph = load_bench_cdbg(bench_dir, namespaces=namespaces_for(("kraken2", "decaying")))
+```
+
 ## Citations
 
 Add a `.bib` entry in `cite/` only for tools this package actually integrates. Do not invent papers.

@@ -244,6 +244,94 @@ def _count_motif(text: str, motif: str) -> int:
         start = found + 1
 
 
+def paint_namespace(
+    cfa: CfaGraph,
+    node_values: Mapping[str, Sequence[str]],
+    edge_values: Mapping[str, Sequence[str]] | None = None,
+    *,
+    namespace: str,
+    operation: str = "merge",
+    values: Sequence[str] | None = None,
+) -> CfaGraph:
+    """Add one colour namespace with fresh ids that do not collide.
+
+    ``node_values`` and ``edge_values`` map graph ids to colour value strings.
+    ``replace`` drops other namespaces. ``merge`` keeps them and appends.
+    """
+    if not isinstance(namespace, str) or namespace == "" or any(char.isspace() for char in namespace):
+        raise ContractError([f"colour namespace must be a non-empty token, got {namespace!r}"])
+    if operation == "replace":
+        existing: list[dict[str, str]] = []
+    else:
+        existing = [dict(row) for row in cfa.colors or []]
+    used = {int(row["color_id"]) for row in existing}
+    next_id = (max(used) + 1) if used else 0
+    index: dict[str, int] = {}
+    extra: list[dict[str, str]] = []
+    for token in list(values or []):
+        name = str(token)
+        if name not in index:
+            index[name] = next_id
+            extra.append({"color_id": str(next_id), "namespace": namespace, "value": name})
+            next_id += 1
+    for mapping in (node_values, edge_values or {}):
+        for values in mapping.values():
+            for value in values:
+                token = str(value)
+                if token not in index:
+                    index[token] = next_id
+                    extra.append({"color_id": str(next_id), "namespace": namespace, "value": token})
+                    next_id += 1
+    node_ids = {node_id: [index[str(value)] for value in values] for node_id, values in node_values.items()}
+    edge_ids = None
+    target: tuple[str, ...] = ("node",)
+    if edge_values is not None:
+        edge_ids = {edge_id: [index[str(value)] for value in values] for edge_id, values in edge_values.items()}
+        target = ("node", "edge")
+    return colour_cfa(
+        cfa,
+        node_ids,
+        edge_ids,
+        operation=operation,
+        colors=existing + extra,
+        target=target,
+    )
+
+
+def accession_from_read_id(read_id: str) -> str:
+    """Return the InSilicoSeq accession prefix (``GCF_001549955``)."""
+    token = read_id.split("_", 2)
+    if len(token) < 2:
+        raise ContractError([f"read id has no accession: {read_id}"])
+    return f"{token[0]}_{token[1]}"
+
+
+def colour_by_read_accessions(
+    cfa: CfaGraph,
+    reads: Sequence[tuple[str, str, str]],
+    *,
+    min_vertex_depth: int = 1,
+    min_edge_kmer_density: int = 2,
+    operation: str = "merge",
+) -> CfaGraph:
+    """Colour by genome accession parsed from each read id, not from sample id.
+
+    Simulated genome ids are evaluation labels. Do not auto-apply this
+    colouring on a benchmark whose accessions are those labels.
+    """
+    remapped = [(read_id, accession_from_read_id(read_id), sequence) for read_id, _sample, sequence in reads]
+    accessions = sorted({sample for _read_id, sample, _sequence in remapped})
+    return colour_by_reads(
+        cfa,
+        remapped,
+        accessions,
+        min_vertex_depth=min_vertex_depth,
+        min_edge_kmer_density=min_edge_kmer_density,
+        operation=operation,
+        namespace="accession",
+    )
+
+
 def colour_by_reads(
     cfa: CfaGraph,
     reads: Sequence[tuple[str, str, str]],
@@ -252,6 +340,7 @@ def colour_by_reads(
     min_vertex_depth: int = 1,
     min_edge_kmer_density: int = 2,
     operation: str = "replace",
+    namespace: str = "sample",
 ) -> CfaGraph:
     """Colour nodes by read depth and edges by junction (k+1)-mer density.
 
@@ -261,7 +350,8 @@ def colour_by_reads(
     ``reads`` entries are ``(read_id, sample_id, sequence)``. ``read_id`` is
     accepted so callers can keep provenance; it is not used as a colour.
     Samples absent from a node or edge contribute no colour. Depth is not
-    imputed.
+    imputed. ``namespace`` defaults to ``sample``. Merge onto an existing
+    dictionary allocates fresh colour ids so namespaces do not collide.
     """
     if min_vertex_depth < 1 or min_edge_kmer_density < 1:
         raise ContractError(["colour thresholds must be >= 1"])
@@ -297,15 +387,19 @@ def colour_by_reads(
             min_vertex_depth,
             min_edge_kmer_density,
         )
-    dictionary = [
-        {"color_id": str(index), "namespace": "sample", "value": sample}
-        for index, sample in enumerate(samples)
-    ]
-    return colour_cfa(
+    node_values = {
+        node_id: [samples[color_id] for color_id in color_ids]
+        for node_id, color_ids in node_assignment.items()
+    }
+    edge_values = {
+        edge_id: [samples[color_id] for color_id in color_ids]
+        for edge_id, color_ids in edge_assignment.items()
+    }
+    return paint_namespace(
         cfa,
-        node_assignment,
-        edge_assignment,
+        node_values,
+        edge_values,
+        namespace=namespace,
         operation=operation,
-        colors=dictionary,
-        target=("node", "edge"),
+        values=list(samples),
     )

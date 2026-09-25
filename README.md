@@ -34,7 +34,7 @@ Seven contracts, in order:
 1. **Genome → metagenome.** Slice reads in-process, or call Samovar `generate` (InSilicoSeq). Each read keeps a genome id.
 2. **Metagenome → graph.** Build a de Bruijn graph, or load an assembler graph (MEGAHIT intermediate FASTG, Flye GFA).
 3. **Graph → CFA.** Write the canonical directory (`metadata.yaml`, `nodes.fna`, `nodes.tsv`, `edges.tsv`).
-4. **Colouring.** Colour nodes by read depth and edges by junction density. Colours are sets. The operations are `replace`, `merge`, `intersect`, and `subtract`. Topology does not change.
+4. **Colouring.** Colour nodes and edges without changing topology. Registered methods include read depth, composition k-means, Kraken2, Kaiju, and decaying leakage. Colours are sets. The operations are `replace`, `merge`, `intersect`, and `subtract`. A tool selects namespaces from the ToCUMG instead of recolouring.
 5. **CFA → CDBG.** Compact non-branching paths. Colours on a unitig are the union of its members. The mapping back to CFA nodes is mandatory.
 6. **CDBG → CGT.** Renumber unitigs to dense ids and store topology as CSR. Features, training labels, and colours stay in separate arrays. A feature registry names the columns. Incoming adjacency (CSC) is derived when needed and is not a second stored graph.
 7. **Analysis on CGT.** Train a graph convolution (NumPy by default, PyTorch Geometric when requested). Results carry `dense_id`, the CDBG unitig id, and the CFA node ids. The input tensor is not modified.
@@ -84,6 +84,8 @@ Benchmark graphs are built with `metametro benchbuild`. The default directory is
 
 ```bash
 metametro benchbuild --list
+metametro benchbuild --list-colourings
+metametro benchbuild --all
 metametro benchbuild bubble_strain_2
 ```
 
@@ -94,7 +96,7 @@ pytest -m mandatory    # every commit
 pytest                 # mandatory and optional
 ```
 
-The mandatory marker selects 138 tests. One further test is marked optional and runs when PyTorch Geometric is installed.
+The mandatory marker selects 153 tests. One further test is marked optional and runs when PyTorch Geometric is installed.
 
 ## License
 

@@ -16,7 +16,7 @@ from metametro.bench.scoring.assembly.universal.lengths import n50
 from metametro.bench.scoring.assembly_binning.universal.contig_f1 import contig_f1
 from metametro.bench.scoring.profiling.universal.abundance import l1, presence_f1
 from metametro.cli import main
-from metametro.contracts.colouring import colour_cfa
+from metametro.contracts.colouring import paint_namespace
 from metametro.errors import ContractError
 from metametro.formats.cfa.io import load_cfa
 from metametro.formats.cdbg.io import load_cdbg
@@ -40,7 +40,9 @@ def test_benchbuild_strain_is_stable_and_coloured(tmp_path: Path) -> None:
     first = build("bubble_strain_2", outdir=tmp_path / "a")
     second = build("strain_bubble", outdir=tmp_path / "b")
     assert first.identity == second.identity
-    assert first.colourings == ("as_built",)
+    assert "as_built" in first.colourings
+    assert "composition_kmeans" in first.colourings
+    assert "decaying" in first.colourings
     for folder in (first.outdir, second.outdir):
         assert (folder / "cfa" / "metadata.yaml").is_file()
         assert (folder / "cdbg" / "metadata.yaml").is_file()
@@ -61,11 +63,11 @@ def test_new_colouring_is_applied(tmp_path: Path) -> None:
     """A colouring registered after the benchmark still runs."""
 
     def mark(graph, _ctx: BuildContext):
-        return colour_cfa(
+        return paint_namespace(
             graph,
-            node_colors={row["node_id"]: [7] for row in graph.nodes},
+            {row["node_id"]: ["unit"] for row in graph.nodes},
+            namespace="mark",
             operation="merge",
-            colors=list(graph.colors or []) + [{"color_id": "7", "namespace": "mark", "value": "unit"}],
         )
 
     register("unit_test_mark", mark)
@@ -93,6 +95,7 @@ def test_reads_benchmark_keeps_genome_ids_out_of_the_graph(tmp_path: Path) -> No
     """Read colouring uses samples. Genome ids stay in ground truth."""
     result = build("bubble_reads_2", outdir=tmp_path / "reads")
     assert "read_depth" in result.colourings
+    assert "read_accession" not in result.colourings
     cfa = load_cfa(result.outdir / "cfa")
     namespaces = {row["namespace"] for row in cfa.colors or []}
     assert "sample" in namespaces
@@ -119,6 +122,16 @@ def test_cli_benchbuild_list(capsys: pytest.CaptureFixture[str]) -> None:
     """``metametro benchbuild --list`` prints the two-taxon bubble."""
     assert main(["benchbuild", "--list"]) == 0
     assert "bubble_strain_2" in capsys.readouterr().out
+
+
+def test_cli_list_colourings(capsys: pytest.CaptureFixture[str]) -> None:
+    """``metametro benchbuild --list-colourings`` names the migrated colourings."""
+    assert main(["benchbuild", "--list-colourings"]) == 0
+    text = capsys.readouterr().out
+    assert "composition_kmeans" in text
+    assert "kraken2" in text
+    assert "kaiju" in text
+    assert "decaying" in text
 
 
 def test_default_outdir_shape(tmp_path: Path) -> None:

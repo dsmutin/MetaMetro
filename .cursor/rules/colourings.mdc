@@ -1,0 +1,14 @@
+---
+description: Colouring methods live in MetaMetro; downstream tools select ToCUMG namespaces
+alwaysApply: true
+---
+
+# Colourings
+
+Do not add a new colouring method in a downstream package. Add it in MetaMetro (`src/metametro/bench/colourings.py` and the matching contract) and open a pull request there.
+
+Do not mock a colouring. Tests may parse a tiny Kraken2 or Kaiju output written in that tool's format. They must not invent a colour mask that pretends to be a classifier.
+
+Check that a colouring is compatible with the colourings already on the graph: allocate fresh colour ids, name a namespace, and keep topology unchanged. `filter_colours` and `load_bench_cdbg` must be able to select that namespace.
+
+Use MetaMetro colourings. A tool that needs a subset of the ToCUMG names the namespaces (for example `kraken2`, `decaying`, `composition`) instead of recolouring the graph.

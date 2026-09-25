@@ -9,5 +9,6 @@ CONTRACTS: dict[str, str] = {
     "colour_cfa": "1.0",
     "cfa_to_cdbg": "1.0",
     "cdbg_to_cgt": "1.0",
+    "filter_colours": "1.0",
     "ds_on_cgt": "1.0",
 }

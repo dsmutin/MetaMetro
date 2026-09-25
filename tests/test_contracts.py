@@ -29,6 +29,7 @@ def test_contract_versions_are_pinned() -> None:
         "cfa_to_cdbg",
         "cdbg_to_cgt",
         "ds_on_cgt",
+        "filter_colours",
     }
     assert set(CONTRACTS.values()) == {"1.0"}
 

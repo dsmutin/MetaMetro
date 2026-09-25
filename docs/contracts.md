@@ -7,7 +7,7 @@ Each stage is a contract. The implementation underneath it is not. Contract vers
 | 1 genome → metagenome | 1.0 | Biological simulation |
 | 2 metagenome → graph | 1.0 | Graph construction |
 | 3 graph → CFA | 1.0 | Canonical representation |
-| 4 CFA colouring | 1.0 | Sample annotation on CFA |
+| 4 CFA colouring | 1.0 | Colour layers on CFA |
 | 5 CFA → CDBG | 1.0 | Compaction |
 | 6 CDBG → CGT | 1.0 | Tensorization |
 | 7 DS on CGT | 1.0 | Graph analysis |
@@ -68,7 +68,19 @@ Minimal read-colouring rule used here:
 - Vertex: sample `S` colours node `V` when the number of reads from `S` that cover `V` is at least `min_vertex_depth` (default 1). Covering means the node sequence occurs in the read, or, when the read is shorter than the node, the read occurs in the node. The reverse complement of the read counts as the same read, once.
 - Edge: sample `S` colours edge `E` when the junction `(k+1)`-mer `source[-k:] + target[k-1]`, or that junction's reverse complement, occurs at least `min_edge_kmer_density` times in reads from `S` (default 2). Occurrences are counted with overlap. A palindromic junction is not counted twice. When the edge has an orientation, a `-` endpoint is reverse-complemented before that slice. A missing orientation is `++`. A sample with zero observations stays uncoloured; depth is not imputed.
 
-The colour dictionary namespace for this rule is `sample`. Taxonomic labels stay in `labels.tsv` under namespace `genome` and are not stored as sample colours.
+The colour dictionary namespace for the read-depth rule is `sample`. Taxonomic labels stay in `labels.tsv` under namespace `genome` and are not stored as sample colours.
+
+Other registered colourings write other namespaces and are not a breaking change:
+
+| Colouring | Namespace | Rule |
+| --- | --- | --- |
+| `composition_kmeans` | `composition` | Canonical k-mer k-means on node sequences (default k=4, 8 clusters, seed 0). |
+| `kraken2` | `kraken2` | Contig taxids from Kraken2. Classifier evidence, not simulation truth. |
+| `kaiju` | `kaiju` | Contig taxids from Kaiju. |
+| `decaying` | `decaying` | Neighbour leakage of existing colour mass (decay 0.5, 4 iterations). |
+| `read_accession` | `accession` | Read-id accession prefix. Explicit only. |
+
+`paint_namespace` allocates fresh colour ids so stacked namespaces do not collide. `filter_colours` keeps a subset of ids or namespaces.
 
 The bubble mock has a node coloured `{0}`, a node coloured `{0,1}`, and a node coloured `{1}`, plus an edge coloured `{0,1}`.
 
@@ -120,6 +132,12 @@ The function copies arrays before training and raises if the input CGT changed. 
 The mock check is: prediction count equals node count, and each prediction still carries the original CFA ids. Accuracy on the four-node bubble is not a performance claim.
 
 Breaking: results that cannot be joined back to `dense_id` or CFA id, or removing `predicted_label` or `probability`. Adding prediction fields is non-breaking. A different model is non-breaking.
+
+## Colour filter
+
+`filter_colours` is not a stage between formats. It applies to a CFA, a CDBG (ToCUMG), or a CGT and returns a new graph of that same kind. Sequences, topology, features, and labels stay. Colour ids that are not selected are removed. On a CDBG the unitig colour is rebuilt as the union of the remaining member colours, including internal-edge colours. On a CGT the `uint8` mask columns and the optional float32 colour weights for the dropped ids are removed together. Surviving columns follow increasing `color_id`. A CGT has no colour namespace, so it is filtered by `color_ids` only. The input object is not modified.
+
+Breaking: a filter that changes topology, feature columns, or which CSR slot a colour column belongs to. Selecting fewer colour ids is the operation itself, not a schema change. Schema versions stay 1.0.
 
 ## Edit proposals
 
