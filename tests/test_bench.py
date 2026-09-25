@@ -184,6 +184,20 @@ def test_community_contract_is_stable_and_renamed(tmp_path: Path) -> None:
     assert phage.spec.total_reads == 4000
 
 
+def test_benchbuild_all_builds_inprocess_and_contracts(tmp_path: Path) -> None:
+    """``--all`` materialises in-process graphs and writes contracts without downloading."""
+    from metametro.bench.build import build_all
+
+    results = build_all(root=tmp_path, execute=False)
+    by_name = {item.spec.name: item for item in results}
+    assert by_name["bubble_strain_2"].status == "built"
+    assert (by_name["bubble_strain_2"].outdir / "cgt" / "metadata.yaml").is_file()
+    assert by_name["4domain_family_100"].status == "contract"
+    assert "strong100" not in by_name
+    again = build_all(root=tmp_path, execute=False)
+    assert all(item.status == "present" for item in again)
+
+
 def test_roxel_execute_needs_rscript(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Roxel does not invent a street graph when R is absent."""
     monkeypatch.setattr("metametro.bench.data.universal.catalog.shutil.which", lambda _name: None)

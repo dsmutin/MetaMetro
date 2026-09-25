@@ -68,6 +68,46 @@ def build(
     raise ContractError([f"unknown benchmark kind {spec.kind}"])
 
 
+def build_all(
+    *,
+    execute: bool = False,
+    gtfs: Path | None = None,
+    root: Path | None = None,
+) -> list[BuildResult]:
+    """Build every registered benchmark.
+
+    In-process graphs are always materialised. Community and external benches
+    write their contract. They download and assemble only when ``execute`` is
+    true. A directory that already has ``manifest.yaml`` and ``identity.sha256``
+    is left as it is.
+    """
+    from metametro.bench.registry import list_specs
+
+    results: list[BuildResult] = []
+    for spec in list_specs():
+        destination = default_outdir(spec, root=root)
+        if (destination / "manifest.yaml").is_file() and (destination / "identity.sha256").is_file():
+            results.append(
+                BuildResult(
+                    spec=spec,
+                    outdir=destination,
+                    identity=(destination / "identity.sha256").read_text(encoding="utf-8").split()[0],
+                    colourings=(),
+                    status="present",
+                )
+            )
+            continue
+        results.append(
+            build(
+                spec.name,
+                execute=execute if spec.kind != "inprocess" else False,
+                gtfs=gtfs,
+                root=root,
+            )
+        )
+    return results
+
+
 def _finish_manifest(
     spec: BenchSpec,
     destination: Path,

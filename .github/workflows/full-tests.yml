@@ -30,6 +30,9 @@ jobs:
       - name: All pytest (mandatory and optional)
         timeout-minutes: 30
         run: pytest --tb=short
+      - name: Build in-process benchmarks
+        timeout-minutes: 20
+        run: metametro benchbuild --all
       - name: Toy example
         timeout-minutes: 15
         run: python examples/toy/run.py
