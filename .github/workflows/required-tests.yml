@@ -23,8 +23,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           auto-update-conda: true
+          conda-remove-defaults: true
           activate-environment: metametro
           environment-file: environment.yml
+      - name: Install the console script
+        run: python -m pip install --no-deps --no-build-isolation -e .
+      - name: Console script
+        run: |
+          metametro --version
+          metametro benchbuild --list
       - name: Mandatory pytest
         timeout-minutes: 30
         run: pytest -m mandatory --tb=short

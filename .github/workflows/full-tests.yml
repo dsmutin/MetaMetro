@@ -25,14 +25,20 @@ jobs:
         with:
           python-version: "3.12"
           auto-update-conda: true
+          conda-remove-defaults: true
           activate-environment: metametro
           environment-file: environment.yml
+      - name: Install the console script
+        run: python -m pip install --no-deps --no-build-isolation -e .
       - name: All pytest (mandatory and optional)
         timeout-minutes: 30
         run: pytest --tb=short
       - name: Build in-process benchmarks
         timeout-minutes: 20
         run: metametro benchbuild --all
+      - name: Load every benchbuild output
+        timeout-minutes: 20
+        run: python -c "from metametro.bench.check import check_registry; print(check_registry())"
       - name: Toy example
         timeout-minutes: 15
         run: python examples/toy/run.py

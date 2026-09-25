@@ -209,6 +209,15 @@ def test_benchbuild_all_builds_inprocess_and_contracts(tmp_path: Path) -> None:
     assert "strong100" not in by_name
     again = build_all(root=tmp_path, execute=False)
     assert all(item.status == "present" for item in again)
+    from metametro.bench.check import check_registry
+
+    checked = dict(check_registry(tmp_path))
+    assert checked["bubble_strain_2"] == "built"
+    assert checked["bubble_reads_2"] == "built"
+    assert checked["4domain_family_100"] == "contract"
+    assert checked["phage_species_5"] == "contract"
+    assert checked["roxel"] == "contract"
+    assert checked["spb_ground_transit"] == "contract"
 
 
 def test_roxel_execute_needs_rscript(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
