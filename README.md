@@ -80,6 +80,13 @@ python examples/edit_proposal/run.py
 
 `examples/toy/run.py` checks the CLI baseline JSON (`status`, `ok`, `input_path`). The external phage run (Samovar reads, MEGAHIT intermediate graph, colouring, CDBG, CGT, both GCN backends) is `scripts/phage_baseline.py`, recorded in [docs/baseline-run.md](docs/baseline-run.md).
 
+Benchmark graphs are built with `metametro benchbuild`. The default directory is `data/bench/{name}/{assembler}/{properties}/` and is gitignored. See [docs/benchmarks.md](docs/benchmarks.md).
+
+```bash
+metametro benchbuild --list
+metametro benchbuild bubble_strain_2
+```
+
 ## Tests
 
 ```bash
@@ -87,7 +94,7 @@ pytest -m mandatory    # every commit
 pytest                 # mandatory and optional
 ```
 
-The mandatory marker selects 120 tests. One further test is marked optional and runs when PyTorch Geometric is installed.
+The mandatory marker selects 134 tests. One further test is marked optional and runs when PyTorch Geometric is installed.
 
 ## License
 

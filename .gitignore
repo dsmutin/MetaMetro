@@ -14,9 +14,10 @@ htmlcov/
 # local test scratch
 testing*/
 
-# downloaded genomes and baseline work directories
+# downloaded genomes, baseline work, and benchmark builds
 data/raw/
 data/work/
+data/bench/
 
 # the GitHub wiki is a separate clone kept outside this tree
 wiki/

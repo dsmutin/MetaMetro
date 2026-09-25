@@ -17,6 +17,7 @@ alwaysApply: true
 - english-docs
 - no-push
 - follow-contributing
+- benchmarks
 
 User-level publication-figures applies when producing plots.
 

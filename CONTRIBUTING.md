@@ -70,6 +70,18 @@ conda activate metametro
 
 Never `git push` unless the human explicitly asks. CI runs on GitHub after they push.
 
+## Benchmarks
+
+New benchmarks are added in this repository, under `src/metametro/bench/`, and reviewed as a pull request. Do not start a second benchmark tree in a downstream tool.
+
+Do not hard-code a machine path (`/mnt`, `/nfs`, `/home`, or a drive letter). A benchmark input is the `benchbuild` output directory, a CLI argument, or an environment variable. If it is missing, stop.
+
+Do not mock a benchmark graph, a taxonomy label, or a metric. A tiny graph written inside a test may stay in that test. A benchmark comes from `metametro benchbuild`.
+
+Do not copy an evaluation target into graph features, colours, or any file a model reads as input. Simulated taxon ids, expected debubbler actions, and gold abundances stay in `ground_truth/` and are used only by the scorer. `benchbuild` rejects a graph that carries those columns.
+
+See [docs/benchmarks.md](docs/benchmarks.md).
+
 ## Citations
 
 Add a `.bib` entry in `cite/` only for tools this package actually integrates. Do not invent papers.
