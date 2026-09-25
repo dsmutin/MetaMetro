@@ -82,6 +82,8 @@ Do not copy an evaluation target into graph features, colours, or any file a mod
 
 See [docs/benchmarks.md](docs/benchmarks.md).
 
+Genome-binning scores call `amber.py` from <https://github.com/CAMI-challenge/AMBER> at tag `v2.0.17-beta`. Clone that tag and set `AMBER_SRC`, or put `amber.py` on `PATH`. Do not replace it with a local reimplementation.
+
 ## Colourings
 
 New colouring methods belong in this repository, under `src/metametro/bench/colourings.py` and `src/metametro/contracts/`, and are reviewed as a pull request. Downstream tools (BubbleBlower, metaMalevich, ParaGVAE) do not add a second colouring implementation.

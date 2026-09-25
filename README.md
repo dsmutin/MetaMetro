@@ -96,7 +96,7 @@ pytest -m mandatory    # every commit
 pytest                 # mandatory and optional
 ```
 
-The mandatory marker selects 153 tests. One further test is marked optional and runs when PyTorch Geometric is installed.
+The mandatory marker selects 157 tests. One further test is marked optional and runs when PyTorch Geometric is installed. Genome-binning AMBER scores call `amber.py` from [CAMI-challenge/AMBER](https://github.com/CAMI-challenge/AMBER) tag `v2.0.17-beta`. Set `AMBER_SRC` to that checkout.
 
 ## License
 

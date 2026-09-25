@@ -10,5 +10,9 @@ dependencies:
   - numpy=2.5.3
   - pyyaml=6.0.3
   - matplotlib-base=3.10.9
+# Genome-binning scores call amber.py from https://github.com/CAMI-challenge/AMBER
+# tag v2.0.17-beta (089ea20e83811e090ab69814e033adc9fc963892). That script is
+# not a conda-forge package. Clone the tag and set AMBER_SRC, or put amber.py
+# on PATH. The required tests do not run it.
 variables:
   PYTHONPATH: src
