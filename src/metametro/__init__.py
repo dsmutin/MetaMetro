@@ -21,7 +21,7 @@ from metametro.edits import (
     validate_edit_application,
     validate_edit_proposal,
 )
-from metametro.converters import cdbg_to_cfa, cdbg_to_cgt, cfa_to_cdbg, edge_index_array, to_pyg
+from metametro.converters import cdbg_to_cfa, cdbg_to_cgt, cfa_to_cdbg, cgt_from_csr, edge_index_array, to_pyg
 from metametro.fixtures import chain_cfa, chain_cdbg, mock_cdbg, mock_cfa, mock_cgt
 from metametro.identity import (
     assert_cgt_matches_cdbg,
@@ -65,6 +65,7 @@ __all__ = [
     "cgt_edge_cfa_ids",
     "csc_from_cgt",
     "cdbg_to_cgt",
+    "cgt_from_csr",
     "cfa_to_cdbg",
     "chain_cdbg",
     "chain_cfa",

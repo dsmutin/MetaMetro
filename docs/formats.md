@@ -164,6 +164,10 @@ Features, training labels, colours, predictions, and confidence are different ob
 
 `indices[j]`, `edge_features[j]`, `edge_labels[j]`, and `edge_colors[j]` are the same directed adjacency entry. Node row `i` matches dense id `i`. Feature names and dtypes are in `metadata.yaml`. Colour columns follow sorted `color_id`. For this minimal schema the colour matrix is dense; a bitset or a sparse matrix is a non-breaking physical choice as long as the node-to-colour-set semantics stay the same.
 
+`C` is a `uint8` membership mask with values 0 and 1. Node and edge masks have the same width. An optional float32 channel, `node_color_weights.npy` and `edge_color_weights.npy`, stores a score in `[0, 1]` on those same columns. A directory that omits both files has no probability channel and still loads. A positive weight requires mask value 1. The weights are not features and are not concatenated into `X`. A hard Kraken taxid stays a mask bit. A Kraken probability uses the weight channel beside that bit. There is no `colour_by_kraken` helper.
+
+`cgt_from_csr` builds a CGT from an external CSR adjacency, the layout used by a VAEGbin bundle. It does not compact a CFA and it does not allocate a dense `N×N` matrix. The caller supplies node ids. When CFA ids are omitted, each node id is stored as its own single CFA id; that id is the caller's, not a biological name assigned here. Edge features are optional. A 1-d vector is the column `weight`. Missing edge features stay width 0; the converter does not fill them with ones. Within each CSR row, targets are sorted and edge features, edge colours, and edge colour weights move with that slot. A repeated target in one row is an error. If node colours are passed and edge colours are not, every edge is uncoloured at the same colour width. Colours are not copied into `X`.
+
 `node_feature_names` and `edge_feature_names` remain the column order. `node_feature_registry` and `edge_feature_registry` are optional extra metadata for the same columns. A schema-1.0 directory written without those keys still loads. Loading does not invent a registry and does not change array values. Each registry entry records:
 
 ```text

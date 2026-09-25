@@ -21,6 +21,7 @@ validate_cgt(cgt)
 lineage = node_lineage(cgt, dense_id)       # source_id, cfa_node_ids
 edge_ids = cgt_edge_cfa_ids(cdbg)           # CSR slot → CFA edge id
 sequence = resolve_sequence(cgt, cdbg, dense_id)  # unitig DNA, not a CGT column
+external = cgt_from_csr(...)  # external CSR; colours stay off X
 csc = csc_from_cgt(cgt)          # incoming index; does not reorder X_edge
 graph = cgt_to_pyg(cgt)          # requires torch_geometric
 result = run_ds(cgt, seed=0)     # does not modify cgt
