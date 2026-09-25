@@ -155,3 +155,38 @@ def test_strain_matches_bubbleblower_when_present() -> None:
     ours = cfa_to_cdbg(our_strain())
     our_sequences = sorted((unitig.sequence, tuple(unitig.color_ids)) for unitig in ours.unitigs)
     assert our_sequences == sequences
+
+
+def test_community_contract_is_stable_and_renamed(tmp_path: Path) -> None:
+    """Pinned communities keep their accession tables and lognormal abundances."""
+    from metametro.bench.data.universal.community import every_other_strain, half_strains, load_pairs
+
+    left = build("4domain_family_100", outdir=tmp_path / "a", execute=False)
+    right = build("high100", outdir=tmp_path / "b", execute=False)
+    assert left.status == "contract"
+    assert left.identity == right.identity
+    assert left.spec.pair_count == 100
+    assert "strong100" not in {spec.name for spec in list_specs()}
+    text = (left.outdir / "ground_truth" / "abundance.csv").read_text(encoding="utf-8").strip().splitlines()
+    assert text[0] == "taxid,N_sample"
+    total = sum(int(line.split(",")[1]) for line in text[1:])
+    assert total == 100_000
+    pins = Path(__file__).resolve().parents[1] / "src" / "metametro" / "bench" / "data" / "pins"
+    held = load_pairs(pins / "bacteria_species_20_heldout" / "accessions.tsv")
+    half = load_pairs(pins / "bacteria_strain_10" / "accessions.tsv")
+    assert half == half_strains(held)
+    genus = load_pairs(pins / "3domain_genus_75" / "accessions.tsv")
+    genus_half = load_pairs(pins / "3domain_genus_75_half" / "accessions.tsv")
+    assert genus_half == every_other_strain(genus)
+    phage = build("phage_10", outdir=tmp_path / "phage", execute=False)
+    assert phage.spec.name == "phage_species_5_x10"
+    assert phage.spec.pair_count == 5
+    assert phage.spec.total_reads == 4000
+
+
+def test_community_execute_stops_without_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A community build does not invent a graph when the assembler is absent."""
+    monkeypatch.setattr("metametro.bench.data.universal.catalog.shutil.which", lambda _name: None)
+    with pytest.raises(ContractError, match="needs these programs"):
+        build("bacteria_species_20_heldout", outdir=tmp_path / "held", execute=True)
+

@@ -68,4 +68,24 @@ src/metametro/bench/scoring/{type}/{bench_name}/
 
 Legacy names such as `strain_bubble` resolve to the canonical name.
 
-Pinned NCBI communities (family, genus, and phage read-depth benches) are added as contracts in the same registry. A bench that needs `datasets`, Samovar, or MEGAHIT stops with the missing program instead of writing a stand-in graph.
+Pinned NCBI communities and external contracts are in the same registry. `metametro benchbuild NAME` downloads and assembles when `datasets`, Samovar, and MEGAHIT are on `PATH`. `metametro benchbuild NAME --contract-only` writes the accession pin and the lognormal abundance table and does not invent a graph. A second contract build has the same `identity.sha256`.
+
+| Name | Was | Design |
+| --- | --- | --- |
+| `4domain_family_100` | high100 | 100 families, 4 domains, family rank, 100000 reads |
+| `4domain_family_100_half` | half100half | every other family, 50 families |
+| `4domain_family_100_x10` | high100_enriched | same families, 1000000 reads |
+| `4domain_family_100_half_x10` | half100half_enriched | 50 families, 1000000 reads |
+| `3domain_genus_75` | low75 | 75 genera, 3 domains, genus rank |
+| `3domain_genus_75_half` | low75half | 38 genera |
+| `3domain_genus_75_x10` | low75_enriched | 75 genera, 1000000 reads |
+| `3domain_genus_75_half_x10` | low75half_enriched | 38 genera, 1000000 reads |
+| `bacteria_species_20_heldout` | heldout_genera | 4 genera, 20 species pairs, species rank |
+| `bacteria_strain_10` | half_strains | 10 of those pairs |
+| `phage_species_5` | phage_baseline | T1, T3, T4, T5, T7, 400 reads, k=21 |
+| `phage_species_5_x10` | phage_x10, phage_10 | same five phages, 4000 reads |
+| `roxel` | roxel | sfnetworks street graph |
+| `spb_ground_transit` | spb transit | ORGP GTFS, 60 m stop merge; pass `--gtfs` |
+
+There is no ten-species phage benchmark. `phage_10` was the ten-times read budget. Strong100, samovar10, and the prebuilt ONT and Illumina bundles are not in this registry.
+

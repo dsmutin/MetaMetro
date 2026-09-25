@@ -39,8 +39,17 @@ def graph_identity(graph: CfaGraph, *, colourings: tuple[str, ...]) -> str:
 
 
 def contract_identity(path: Path) -> str:
-    """SHA-256 of the contract files written for a benchmark that is not yet assembled."""
-    files = sorted(item for item in path.rglob("*") if item.is_file() and item.name != "identity.sha256")
+    """SHA-256 of ``contract/`` and ``ground_truth/`` only.
+
+    ``manifest.yaml`` and ``identity.sha256`` are not part of the digest, so
+    recording the digest does not change it.
+    """
+    files: list[Path] = []
+    for folder in ("contract", "ground_truth"):
+        root = path / folder
+        if root.is_dir():
+            files.extend(item for item in root.rglob("*") if item.is_file())
+    files.sort()
     digest = hashlib.sha256()
     for item in files:
         digest.update(str(item.relative_to(path)).encode("utf-8"))

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from metametro.bench.data.universal.catalog import community_specs, external_specs
 from metametro.bench.data.universal.inprocess import (
     prepare_bubble_error_1,
     prepare_bubble_nested_2,
@@ -101,6 +102,9 @@ SPECS: dict[str, BenchSpec] = {
         kind="inprocess",
     ),
 }
+
+SPECS.update(community_specs())
+SPECS.update(external_specs())
 
 PREPARE: dict[str, Prepare] = {
     "bubble_strain_2": prepare_bubble_strain_2,

@@ -1,0 +1,21 @@
+pair_id	role	genus	accession	organism_name	tax_id	strain	refseq_category	total_sequence_length	assembly_level	note
+eco_albertii	sim	Escherichia	GCF_001549955.1	Escherichia albertii	208962	EC06-170		4657167	Complete Genome	Different strain from the RefSeq reference; lengths differ
+eco_albertii	db	Escherichia	GCF_028622335.1	Escherichia albertii	208962	BIA_5-2	reference genome	4758111	Complete Genome	RefSeq reference genome for this species
+eco_marmotae	sim	Escherichia	GCF_002900365.1	Escherichia marmotae	1499973	HT073016		4896291	Complete Genome	Different strain from the RefSeq reference; lengths differ
+eco_marmotae	db	Escherichia	GCF_029962465.1	Escherichia marmotae	1499973	YF8	reference genome	4669757	Complete Genome	RefSeq reference genome for this species
+eco_coli	sim	Escherichia	GCF_000952955.1	Escherichia coli	562	K-12 substr. RV308		4585620	Complete Genome	K-12 substrain, not the MG1655 reference; taxId 562 is from the downloaded assembly report
+eco_coli	db	Escherichia	GCF_000005845.2	Escherichia coli str. K-12 substr. MG1655	511145	K-12 substr. MG1655	reference genome	4641652	Complete Genome	RefSeq reference; strain tax_id 511145
+shi_sonnei	sim	Shigella	GCF_001518855.1	Shigella sonnei	624	FORC_011		5132711	Complete Genome	Different strain from the RefSeq reference; lengths differ
+shi_sonnei	db	Shigella	GCF_002950395.1	Shigella sonnei	624	ATCC 29930	reference genome	4994001	Complete Genome	RefSeq reference genome for this species
+shi_dysenteriae	sim	Shigella	GCF_002741615.1	Shigella dysenteriae	622	BU53M1		4764892	Complete Genome	Different strain from the RefSeq reference; lengths differ
+shi_dysenteriae	db	Shigella	GCF_022354085.1	Shigella dysenteriae	622	SWHEFF_49	reference genome	5192674	Complete Genome	RefSeq reference genome for this species
+pse_aeruginosa	sim	Pseudomonas	GCF_000816985.1	Pseudomonas aeruginosa	287	F22031		6603099	Complete Genome	Different strain from the PAO1 reference; lengths differ
+pse_aeruginosa	db	Pseudomonas	GCF_000006765.1	Pseudomonas aeruginosa PAO1	208964	PAO1	reference genome	6264404	Complete Genome	RefSeq reference; strain tax_id 208964
+pse_fluorescens	sim	Pseudomonas	GCF_000730425.1	Pseudomonas fluorescens	294	UK4		6064456	Complete Genome	Different strain from the reference; lengths differ
+pse_fluorescens	db	Pseudomonas	GCF_900215245.1	Pseudomonas fluorescens	294	ATCC 13525	reference genome	6511547	Chromosome	RefSeq reference; assembly level is chromosome
+pse_protegens	sim	Pseudomonas	GCF_003363755.1	Pseudomonas protegens	380021	FD6		6667995	Complete Genome	No RefSeq reference in the NCBI summary; two strains with different lengths
+pse_protegens	db	Pseudomonas	GCF_002208745.2	Pseudomonas protegens	380021	FDAARGOS_307		7075815	Complete Genome	Suppressed assemblies were not used
+str_pyogenes	sim	Streptococcus	GCF_000743015.1	Streptococcus pyogenes	1314	ATCC 19615		1844804	Complete Genome	Different strain from the reference; lengths differ
+str_pyogenes	db	Streptococcus	GCF_900475035.1	Streptococcus pyogenes	1314	NCTC12064	reference genome	1746380	Complete Genome	RefSeq reference genome for this species
+str_mutans	sim	Streptococcus	GCF_001558215.1	Streptococcus mutans	1309	NG8		1984441	Complete Genome	Different strain from the reference; lengths differ
+str_mutans	db	Streptococcus	GCF_019048645.1	Streptococcus mutans	1309	FDAARGOS 1458	reference genome	2019345	Complete Genome	RefSeq reference genome for this species

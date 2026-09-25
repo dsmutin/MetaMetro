@@ -24,6 +24,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="colouring to apply; repeat for several. Default: every colouring that can run",
     )
+    parser.add_argument(
+        "--contract-only",
+        action="store_true",
+        help="write the pin and abundance table, and do not download or assemble",
+    )
+    parser.add_argument("--gtfs", type=Path, default=None, help="GTFS zip for spb_ground_transit")
     args = parser.parse_args(argv)
     if args.list or not args.name:
         for spec in list_specs():
@@ -33,9 +39,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{spec.name}\t{spec.assembler}\t{spec.properties}\t{spec.summary}{aliases}")
         return 0 if args.list or not args.name else 2
     colourings = tuple(args.colouring) if args.colouring else None
-    # Resolve first so an alias is accepted before the directory is created.
     resolve(args.name)
-    result = build(args.name, outdir=args.outdir, colourings=colourings)
+    result = build(
+        args.name,
+        outdir=args.outdir,
+        colourings=colourings,
+        execute=not args.contract_only,
+        gtfs=args.gtfs,
+    )
     print(f"bench\t{result.spec.name}")
     print(f"status\t{result.status}")
     print(f"outdir\t{result.outdir}")

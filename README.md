@@ -94,7 +94,7 @@ pytest -m mandatory    # every commit
 pytest                 # mandatory and optional
 ```
 
-The mandatory marker selects 134 tests. One further test is marked optional and runs when PyTorch Geometric is installed.
+The mandatory marker selects 136 tests. One further test is marked optional and runs when PyTorch Geometric is installed.
 
 ## License
 
