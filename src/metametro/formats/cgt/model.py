@@ -18,8 +18,10 @@ class Cgt:
     Node ``i`` and every node-aligned array row ``i`` are the same dense id.
     Edge slot ``j`` in ``indices`` / ``edge_features`` / ``edge_labels`` /
     ``edge_colors`` is the same directed adjacency entry. ``X`` holds
-    features, ``y`` holds training labels, and ``C`` holds colours. Model
-    predictions are not stored on this object.
+    features, ``y`` holds training labels, and ``C`` holds colours. Optional
+    ``node_color_weights`` and ``edge_color_weights`` are float32 scores on
+    those same colour columns. They are not features. Model predictions are
+    not stored on this object.
     """
 
     metadata: dict[str, Any]
@@ -33,6 +35,8 @@ class Cgt:
     node_labels: np.ndarray | None = None
     edge_labels: np.ndarray | None = None
     color_ids: list[int] = field(default_factory=list)
+    node_color_weights: np.ndarray | None = None
+    edge_color_weights: np.ndarray | None = None
 
     @property
     def num_nodes(self) -> int:

@@ -34,6 +34,28 @@ def _binary_colours(array: np.ndarray, name: str, errors: list[str]) -> None:
         errors.append(f"{name} colours must be 0 or 1")
 
 
+def _color_weights(
+    weights: np.ndarray | None,
+    mask: np.ndarray,
+    name: str,
+    errors: list[str],
+) -> None:
+    """Require an optional probability channel to match the uint8 colour mask."""
+    if weights is None:
+        return
+    if weights.dtype != np.float32 or weights.ndim != 2 or weights.shape != mask.shape:
+        errors.append(f"{name} colour weights must be float32 and match the colour mask")
+        return
+    if weights.size and not np.isfinite(weights).all():
+        errors.append(f"{name} colour weights must be finite")
+        return
+    if weights.size and (float(weights.min()) < 0.0 or float(weights.max()) > 1.0):
+        errors.append(f"{name} colour weights must lie in [0, 1]")
+        return
+    if weights.size and np.any((mask == 0) & (weights > 0)):
+        errors.append(f"{name} colour weight is set where the colour mask is 0")
+
+
 def validate_cgt(graph: Cgt) -> None:
     """Reject tensors that break schema 1.0 alignment invariants."""
     errors: list[str] = []
@@ -135,6 +157,10 @@ def validate_cgt(graph: Cgt) -> None:
         errors.append("duplicate color_id")
     _binary_colours(graph.node_colors, "node", errors)
     _binary_colours(graph.edge_colors, "edge", errors)
+    _color_weights(graph.node_color_weights, graph.node_colors, "node", errors)
+    _color_weights(graph.edge_color_weights, graph.edge_colors, "edge", errors)
+    if (graph.node_color_weights is None) != (graph.edge_color_weights is None):
+        errors.append("node and edge colour weights must both be present or both be absent")
     if len(graph.mapping) != n:
         errors.append("invalid mapping: dense_id table length must equal N")
     dense_ids = [row.get("dense_id") for row in graph.mapping]

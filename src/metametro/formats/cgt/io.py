@@ -25,6 +25,8 @@ def dump_cgt(graph: Cgt, path: str | Path) -> None:
     np.save(root / "edge_features.npy", graph.edge_features)
     np.save(root / "node_colors.npy", graph.node_colors)
     np.save(root / "edge_colors.npy", graph.edge_colors)
+    _save_or_remove(root / "node_color_weights.npy", graph.node_color_weights)
+    _save_or_remove(root / "edge_color_weights.npy", graph.edge_color_weights)
     if graph.node_labels is not None:
         np.save(root / "node_labels.npy", graph.node_labels)
     if graph.edge_labels is not None:
@@ -53,6 +55,15 @@ def _optional(root: Path, name: str) -> np.ndarray | None:
     if not path.is_file():
         return None
     return np.load(path)
+
+
+def _save_or_remove(path: Path, array: np.ndarray | None) -> None:
+    """Write an optional array, or delete a stale file from an earlier dump."""
+    if array is None:
+        if path.is_file():
+            path.unlink()
+        return
+    np.save(path, array)
 
 
 def load_cgt(path: str | Path, *, validate: bool = True) -> Cgt:
@@ -103,6 +114,8 @@ def load_cgt(path: str | Path, *, validate: bool = True) -> Cgt:
         node_labels=_optional(root, "node_labels.npy"),
         edge_labels=_optional(root, "edge_labels.npy"),
         color_ids=color_ids,
+        node_color_weights=_optional(root, "node_color_weights.npy"),
+        edge_color_weights=_optional(root, "edge_color_weights.npy"),
     )
     if validate:
         validate_cgt(graph)

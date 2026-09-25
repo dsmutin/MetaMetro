@@ -160,6 +160,8 @@ def run_ds(
         np.array(cgt.indices, copy=True),
         np.array(cgt.node_colors, copy=True),
         np.array(cgt.edge_colors, copy=True),
+        None if cgt.node_color_weights is None else np.array(cgt.node_color_weights, copy=True),
+        None if cgt.edge_color_weights is None else np.array(cgt.edge_color_weights, copy=True),
     )
     if backend == "numpy":
         predicted, probabilities = train_numpy_gcn(cgt, epochs=epochs, seed=seed)
@@ -181,6 +183,10 @@ def run_ds(
         raise ContractError(["DS mutated CGT topology"])
     if not np.array_equal(before[6], cgt.node_colors) or not np.array_equal(before[7], cgt.edge_colors):
         raise ContractError(["DS mutated CGT colours"])
+    if before[8] is not None and not np.array_equal(before[8], cgt.node_color_weights):
+        raise ContractError(["DS mutated CGT colour weights"])
+    if before[9] is not None and not np.array_equal(before[9], cgt.edge_color_weights):
+        raise ContractError(["DS mutated CGT colour weights"])
     model_version = _package_version()
     rows = []
     for row, label, probability in zip(cgt.mapping, predicted, probabilities):

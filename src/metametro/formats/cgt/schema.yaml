@@ -21,6 +21,14 @@ required_metadata:
 optional_metadata:
   - node_feature_registry
   - edge_feature_registry
+optional_arrays:
+  - node_color_weights.npy
+  - edge_color_weights.npy
+colour_weights: >-
+  Optional float32 scores on the same columns as the uint8 colour mask.
+  Absent files mean the graph has no probability channel. A weight is in
+  [0, 1]. A positive weight requires mask value 1. The channel is not a
+  feature matrix.
 forbidden:
   - dense_adjacency
   - python_objects_per_node
